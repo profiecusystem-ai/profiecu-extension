@@ -290,24 +290,34 @@
         console.log('[DPD] Dobírka not found:', e.message);
       }
 
-      // Zaškrtni Dobírka checkbox
+      // Zaškrtni Dobírka checkbox — klikni přímo na input element
       await delay(1000);
       try {
         var dobirkaLabel = await waitForLabel('Dobírka', 10000);
-        console.log('[DPD] Dobírka label found for checkbox');
+        console.log('[DPD] Dobírka label found, for:', dobirkaLabel.getAttribute('for'));
 
-        if (verifyChecked(dobirkaLabel)) {
-          console.log('[DPD] Dobírka already checked');
-        } else {
-          await realisticLabelClick(dobirkaLabel);
+        var cbForId = dobirkaLabel.getAttribute('for');
+        var cb = cbForId ? document.getElementById(cbForId) : null;
+        if (!cb) cb = dobirkaLabel.querySelector('input[type="checkbox"]');
+        if (!cb) cb = dobirkaLabel.parentElement &&
+          dobirkaLabel.parentElement.querySelector('input[type="checkbox"]');
+
+        if (cb) {
+          var cbRect = cb.getBoundingClientRect();
+          cb.dispatchEvent(new MouseEvent('mousedown', {
+            bubbles: true, cancelable: true,
+            clientX: cbRect.left + cbRect.width / 2,
+            clientY: cbRect.top + cbRect.height / 2
+          }));
+          cb.dispatchEvent(new MouseEvent('click', {
+            bubbles: true, cancelable: true,
+            clientX: cbRect.left + cbRect.width / 2,
+            clientY: cbRect.top + cbRect.height / 2
+          }));
           await delay(300);
-          if (!verifyChecked(dobirkaLabel)) {
-            var forId = dobirkaLabel.getAttribute('for');
-            var cb = forId ? document.getElementById(forId) : null;
-            if (cb) await realisticLabelClick(cb);
-            await delay(300);
-          }
-          console.log('[DPD] Dobírka checked:', verifyChecked(dobirkaLabel));
+          console.log('[DPD] Dobírka checked:', cb.checked);
+        } else {
+          console.log('[DPD] Dobírka checkbox input not found');
         }
       } catch (e) {
         console.log('[DPD] Dobírka label not found:', e.message);
