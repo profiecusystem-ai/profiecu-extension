@@ -101,11 +101,11 @@
       .querySelector('.rw-dropdown-list-input');
     reactDropdownClick(maskDropdownInput);
     console.log('[DPD] mask dropdown click dispatched');
-    await delay(1000);
-    var option = await waitForEl('.rw-list-option', 5000);
-    console.log('[DPD] mask option found');
-    reactDropdownClick(option);
-    console.log('[DPD] mask option selected');
+    await delay(500);
+    maskDropdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
+    await delay(200);
+    maskDropdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+    console.log('[DPD] mask selected via keyboard');
 
     // Step 2 — PSČ
     await delay(1000);
