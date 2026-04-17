@@ -333,16 +333,17 @@
       console.log('[DPD ProfiECU] Autofill complete (no amount)');
     }
 
-    // ═══ EMAIL (3500ms): Fill receiver email ═══
+    // ═══ EMAIL (3500ms): Fill receiver email via injected script (execCommand needs page context) ═══
     setTimeout(() => {
-      const el = document.querySelector('[name="email"][data-testid="receiver-email"]');
-      if (el && data.email) {
-        el.focus();
-        el.select();
-        document.execCommand('insertText', false, data.email);
-        console.log('[DPD ProfiECU] email set:', data.email);
-      } else {
-        console.log('[DPD ProfiECU] email MISS — el=' + !!el);
+      if (data.email) {
+        const script = document.createElement('script');
+        script.textContent = '(function(){' +
+          'var el=document.querySelector("[name=\\"email\\"][data-testid=\\"receiver-email\\"]");' +
+          'if(el){el.focus();el.select();document.execCommand("insertText",false,"' + data.email.replace(/"/g, '\\"') + '");}' +
+          '})();';
+        document.head.appendChild(script);
+        script.remove();
+        console.log('[DPD ProfiECU] email injected via script tag:', data.email);
       }
     }, 3500);
   }
