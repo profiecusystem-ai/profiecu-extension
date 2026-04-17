@@ -28,15 +28,61 @@
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  // ═══ React dropdown click (mousedown + mouseup + click) ═══
-  function reactDropdownClick(el) {
-    var opts = { bubbles: true, cancelable: true, view: window };
-    el.dispatchEvent(new MouseEvent('mousedown', opts));
-    el.dispatchEvent(new MouseEvent('mouseup', opts));
-    el.dispatchEvent(new MouseEvent('click', opts));
+  // ═══ Truly open dropdown — full pointer event sequence with coordinates ═══
+  function trulyOpenDropdown(dropdownInput) {
+    return new Promise(function (resolve) {
+      dropdownInput.scrollIntoView({ block: 'center', behavior: 'instant' });
+      setTimeout(function () {
+        var rect = dropdownInput.getBoundingClientRect();
+        function fireEvent(type, EventCtor) {
+          EventCtor = EventCtor || MouseEvent;
+          var evt = new EventCtor(type, {
+            bubbles: true, cancelable: true, composed: true,
+            view: window, button: 0, buttons: 1,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+            pointerType: 'mouse'
+          });
+          dropdownInput.dispatchEvent(evt);
+        }
+        dropdownInput.focus();
+        fireEvent('pointerdown', PointerEvent);
+        fireEvent('mousedown');
+        fireEvent('pointerup', PointerEvent);
+        fireEvent('mouseup');
+        fireEvent('click');
+        resolve();
+      }, 50);
+    });
   }
 
-  // ═══ Wait for element (Promise-based) ═══
+  // ═══ Truly click option — full pointer event sequence with coordinates ═══
+  function trulyClickOption(option) {
+    return new Promise(function (resolve) {
+      option.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      setTimeout(function () {
+        var rect = option.getBoundingClientRect();
+        function fireEvent(type, EventCtor) {
+          EventCtor = EventCtor || MouseEvent;
+          option.dispatchEvent(new EventCtor(type, {
+            bubbles: true, cancelable: true, composed: true,
+            view: window, button: 0, buttons: 1,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+            pointerType: 'mouse'
+          }));
+        }
+        fireEvent('pointerdown', PointerEvent);
+        fireEvent('mousedown');
+        fireEvent('pointerup', PointerEvent);
+        fireEvent('mouseup');
+        fireEvent('click');
+        resolve();
+      }, 50);
+    });
+  }
+
+  // ═══ Wait for element (Promise-based polling) ═══
   function waitForEl(predicate, timeout, interval) {
     timeout = timeout || 5000;
     interval = interval || 100;
@@ -56,11 +102,6 @@
     });
   }
 
-  // ═══ Delay helper ═══
-  function delay(ms) {
-    return new Promise(function (r) { setTimeout(r, ms); });
-  }
-
   // ═══ Wait for element via MutationObserver ═══
   function waitForElObserver(selector, timeout) {
     timeout = timeout || 5000;
@@ -74,9 +115,14 @@
       obs.observe(document.body, { childList: true, subtree: true });
       setTimeout(function () {
         obs.disconnect();
-        reject(new Error('Observer timeout: ' + selector));
+        reject(new Error('observer timeout: ' + selector));
       }, timeout);
     });
+  }
+
+  // ═══ Delay helper ═══
+  function delay(ms) {
+    return new Promise(function (r) { setTimeout(r, ms); });
   }
 
   // ═══ Main async run ═══
@@ -115,22 +161,17 @@
     // Wait for React to render maskAddressName after checkbox
     await delay(1000);
 
-    // Step 1 — maskovací adresa (ArrowDown opens, mousedown+click selects)
+    // Step 1 — maskovací adresa
     var maskField = await waitForEl('[name="maskAddressName"]', 10000);
     console.log('[DPD] maskAddressName found');
     var maskDropdownInput = maskField.closest('.rw-dropdown-list')
       .querySelector('.rw-dropdown-list-input');
-    maskDropdownInput.focus();
-    maskDropdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
-    await delay(500);
-    var maskOption = document.querySelector('.rw-list-option');
-    if (maskOption) {
-      maskOption.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      maskOption.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      console.log('[DPD] mask address selected');
-    } else {
-      console.log('[DPD] mask option not found after ArrowDown');
-    }
+    await trulyOpenDropdown(maskDropdownInput);
+    console.log('[DPD] mask dropdown opened');
+    var maskOption = await waitForElObserver('.rw-list-option', 5000);
+    console.log('[DPD] mask option appeared');
+    await trulyClickOption(maskOption);
+    console.log('[DPD] mask selected:', maskField.value);
 
     // Step 2 — PSČ
     await delay(1000);
@@ -153,43 +194,45 @@
       console.log('[DPD] email set:', data.email);
     }
 
-    // Step 4 — DPD Private (ArrowDown opens, find option, mousedown+click)
+    // Step 4 — DPD Private
     await delay(2500);
     var mainDropdown = document.querySelector('[name="product.mainProductSelected"]');
     if (mainDropdown) {
       var mainDropdownInput = mainDropdown.closest('.rw-dropdown-list')
         .querySelector('.rw-dropdown-list-input');
-      mainDropdownInput.focus();
-      mainDropdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
-      await delay(500);
-      var dpdPrivate = Array.from(document.querySelectorAll('.rw-list-option'))
-        .find(function (o) { return o.textContent.trim() === 'DPD Private'; });
-      if (dpdPrivate) {
-        dpdPrivate.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        dpdPrivate.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await trulyOpenDropdown(mainDropdownInput);
+      console.log('[DPD] main product dropdown opened');
+      try {
+        var dpdPrivate = await waitForEl(function () {
+          return Array.from(document.querySelectorAll('.rw-list-option'))
+            .find(function (o) { return o.textContent.trim() === 'DPD Private'; });
+        }, 5000);
+        await trulyClickOption(dpdPrivate);
         console.log('[DPD] DPD Private selected');
-      } else {
-        console.log('[DPD] DPD Private not found');
+      } catch (e) {
+        console.log('[DPD] DPD Private not found:', e.message);
       }
     }
 
-    // Step 5 — Dobírka (ArrowDown opens, find option, mousedown+click)
+    // Step 5 — Dobírka
     await delay(1500);
     var addDropdown = document.querySelector('[name="product.additionalProductSelected"]');
     if (addDropdown) {
       var addDropdownInput = addDropdown.closest('.rw-dropdown-list')
         .querySelector('.rw-dropdown-list-input');
-      addDropdownInput.focus();
-      addDropdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
-      await delay(500);
-      var dobirka = Array.from(document.querySelectorAll('.rw-list-option'))
-        .find(function (o) { return o.textContent.trim() === 'Dobírka'; });
-      if (dobirka) {
-        dobirka.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        dobirka.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        console.log('[DPD] Dobírka selected');
-      } else {
-        console.log('[DPD] Dobírka not found');
+      await trulyOpenDropdown(addDropdownInput);
+      console.log('[DPD] additional services dropdown opened');
+      try {
+        var dobirka = await waitForEl(function () {
+          return Array.from(document.querySelectorAll('.rw-list-option'))
+            .find(function (o) { return o.textContent.trim() === 'Dobírka'; });
+        }, 5000);
+        if (dobirka) {
+          await trulyClickOption(dobirka);
+          console.log('[DPD] Dobírka selected');
+        }
+      } catch (e) {
+        console.log('[DPD] Dobírka not found:', e.message);
       }
     }
 
