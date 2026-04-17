@@ -156,18 +156,6 @@
         console.log('[DPD ProfiECU] Step 0: clicked "Rozbalit..."');
       }
 
-      // Fill receiver email — second [name="email"] on page (index 1)
-      const emailFields = document.querySelectorAll('[name="email"]');
-      const receiverEmail = emailFields[1];
-      console.log('[DPD ProfiECU] Step 0: found ' + emailFields.length + ' email fields');
-      if (receiverEmail && data.email) {
-        receiverEmail.focus();
-        document.execCommand('selectAll');
-        document.execCommand('insertText', false, data.email);
-        console.log('[DPD ProfiECU] Step 0: receiver email set via execCommand:', data.email);
-      } else {
-        console.log('[DPD ProfiECU] Step 0: receiver email field not found or no email data');
-      }
     }, 0);
 
     // ═══ STEP 1 (600ms): Click mask address field to open dropdown ═══
@@ -341,6 +329,21 @@
     } else {
       console.log('[DPD ProfiECU] Autofill complete (no amount)');
     }
+
+    // ═══ STEP 7 (9500ms): Fill receiver email (last step — after all fields loaded) ═══
+    setTimeout(() => {
+      const emailFields = document.querySelectorAll('[name="email"]');
+      const receiverEmail = emailFields[1];
+      console.log('[DPD ProfiECU] Step 7: found ' + emailFields.length + ' email fields');
+      if (receiverEmail && data.email) {
+        receiverEmail.focus();
+        document.execCommand('selectAll');
+        document.execCommand('insertText', false, data.email);
+        console.log('[DPD ProfiECU] Step 7: email set:', data.email);
+      } else {
+        console.log('[DPD ProfiECU] Step 7: receiver email field not found or no email data');
+      }
+    }, 9500);
   }
 
   // Wait for page to be ready, then fill
