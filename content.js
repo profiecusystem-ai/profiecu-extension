@@ -312,21 +312,16 @@
         return;
       }
 
-      // 1. Find and click "Doplňkové služby" dropdown to open it
-      const doplnkoveLabel = Array.from(document.querySelectorAll('label')).find(
+      // 1. Find and click "Doplňkové služby" dropdown input
+      const doplnkoveDropdown = Array.from(document.querySelectorAll('label')).find(
         el => el.textContent.trim() === 'Doplňkové služby'
-      );
-      if (doplnkoveLabel) {
-        const dropdown = doplnkoveLabel.closest('.rw-dropdown-list') || doplnkoveLabel.nextElementSibling;
-        if (dropdown) {
-          const dropdownInput = dropdown.querySelector('.rw-dropdown-list-input') || dropdown;
-          dropdownInput.click();
-          console.log('[DPD ProfiECU] Step 5a: opened Doplňkové služby dropdown');
-        } else {
-          console.log('[DPD ProfiECU] Step 5a: dropdown container NOT found near label');
-        }
+      )?.closest('.rw-dropdown-list')?.querySelector('.rw-dropdown-list-input');
+
+      if (doplnkoveDropdown) {
+        doplnkoveDropdown.click();
+        console.log('[DPD ProfiECU] Step 5a: Doplňkové služby clicked');
       } else {
-        console.log('[DPD ProfiECU] Step 5a: label "Doplňkové služby" NOT found');
+        console.log('[DPD ProfiECU] Step 5a: Doplňkové služby dropdown NOT found');
       }
 
       // 2. Wait 500ms for dropdown list to render, then click "Dobírka"
