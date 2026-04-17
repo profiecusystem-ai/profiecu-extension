@@ -21,7 +21,7 @@
   // ═══ Open rw-dropdown by label text, click option by text ═══
   function openDropdownByLabel(labelText, optionText, callback) {
     var label = Array.from(document.querySelectorAll('label')).find(
-      function (el) { return el.textContent.trim() === labelText; }
+      function (el) { return el.textContent.trim().includes(labelText); }
     );
     var container = label && label.closest('.rw-dropdown-list');
     var input = container && container.querySelector('.rw-dropdown-list-input');
