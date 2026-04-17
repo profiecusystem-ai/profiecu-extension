@@ -238,10 +238,19 @@
 
     // Step 5b — zaškrtni Dobírku přes label click
     await delay(500);
-    var labels = document.querySelectorAll('label');
-    var dobirkaLabel = Array.from(labels).find(function (l) {
-      return l.textContent.trim() === 'Dobírka';
-    });
+    var allLabels = document.querySelectorAll('label');
+    var dobirkaLabel = null;
+
+    // Try index 43 first
+    if (allLabels[43] && allLabels[43].textContent.trim() === 'Dobírka') {
+      dobirkaLabel = allLabels[43];
+    } else {
+      // Fallback — find by text
+      dobirkaLabel = Array.from(allLabels).find(function (l) {
+        return l.textContent.trim() === 'Dobírka';
+      });
+    }
+
     if (dobirkaLabel) {
       var labelRect = dobirkaLabel.getBoundingClientRect();
       dobirkaLabel.dispatchEvent(new MouseEvent('mousedown', {
