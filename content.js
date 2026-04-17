@@ -230,17 +230,35 @@
       if (!emailField) {
         const labels = document.querySelectorAll('label');
         for (const lbl of labels) {
-          if (lbl.textContent && lbl.textContent.trim() === 'E-mail') {
+          if (lbl.textContent && (lbl.textContent.trim() === 'E-mail' || lbl.textContent.trim() === 'Email')) {
             const forId = lbl.getAttribute('for');
             if (forId) emailField = document.getElementById(forId);
-            if (!emailField) emailField = lbl.closest('.form-group, .field, div')?.querySelector('input');
+            if (!emailField) {
+              // Try input inside the same parent container
+              const parent = lbl.closest('.form-group, .field, .rw-widget, div');
+              if (parent) emailField = parent.querySelector('input');
+            }
+            if (!emailField) {
+              // Try next sibling input
+              let next = lbl.nextElementSibling;
+              while (next) {
+                if (next.tagName === 'INPUT') { emailField = next; break; }
+                const innerInput = next.querySelector('input');
+                if (innerInput) { emailField = innerInput; break; }
+                next = next.nextElementSibling;
+              }
+            }
+            console.log('[DPD ProfiECU] Step 3: email label found, for=' + forId + ', input=' + (emailField ? emailField.name || emailField.id || 'unnamed' : 'NOT found'));
             break;
           }
         }
       }
       setVal(emailField, data.email);
 
-      console.log('[DPD ProfiECU] Step 3: city, street, phone, email');
+      console.log('[DPD ProfiECU] Step 3: city=' + (cityField ? 'OK' : 'MISS') +
+        ' street=' + (streetField ? 'OK' : 'MISS') +
+        ' phone=' + (phoneField ? 'OK' : 'MISS') +
+        ' email=' + (emailField ? (emailField.name || emailField.id || 'found') : 'MISS'));
     }, 3500);
 
     // ═══ STEP 4 (6000ms): Select DPD Private via rw-dropdown-list ═══
@@ -285,22 +303,69 @@
       }, 500);
     }, 6000);
 
-    // ═══ STEP 5 (8000ms): Check COD (Dobírka) — click label directly ═══
+    // ═══ STEP 5 (8000ms): Check COD (Dobírka) in additional services ═══
     setTimeout(() => {
       const alreadySelected = document.querySelector('#shipment-selected-additional');
-      if (alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka')) {
+      const alreadyHasCod = alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka');
+      console.log('[DPD ProfiECU] Step 5: #shipment-selected-additional exists=' + !!alreadySelected + ', hasCOD=' + !!alreadyHasCod);
+
+      if (alreadyHasCod) {
         console.log('[DPD ProfiECU] Step 5: COD already selected, skipping');
         return;
       }
 
-      const dobirkaLabel = Array.from(document.querySelectorAll('label')).find(
-        el => el.textContent.trim() === 'Dobírka'
-      );
-      if (dobirkaLabel) {
-        dobirkaLabel.click();
-        console.log('[DPD ProfiECU] Step 5: Dobírka clicked');
-      } else {
-        console.log('[DPD ProfiECU] Step 5: Dobírka NOT found');
+      // Try clicking checkbox in #shipment-additional-services
+      const additionalServices = document.querySelector('#shipment-additional-services');
+      console.log('[DPD ProfiECU] Step 5: #shipment-additional-services exists=' + !!additionalServices);
+
+      let clicked = false;
+      if (additionalServices) {
+        const checkboxes = additionalServices.querySelectorAll('input[type="checkbox"]');
+        const labels = additionalServices.querySelectorAll('label');
+        console.log('[DPD ProfiECU] Step 5: found ' + checkboxes.length + ' checkboxes, ' + labels.length + ' labels');
+
+        // Log all labels for debugging
+        for (const lbl of labels) {
+          console.log('[DPD ProfiECU] Step 5: label: "' + lbl.textContent.trim() + '"');
+        }
+
+        for (const lbl of labels) {
+          if (lbl.textContent && lbl.textContent.includes('Dobírka')) {
+            // Try checkbox inside label
+            const cb = lbl.querySelector('input[type="checkbox"]');
+            if (cb && !cb.checked) {
+              cb.click();
+              clicked = true;
+              console.log('[DPD ProfiECU] Step 5: clicked checkbox inside label');
+            } else if (cb && cb.checked) {
+              clicked = true;
+              console.log('[DPD ProfiECU] Step 5: checkbox already checked');
+            } else {
+              // No checkbox inside — click label itself
+              lbl.click();
+              clicked = true;
+              console.log('[DPD ProfiECU] Step 5: clicked label directly');
+            }
+            break;
+          }
+        }
+      }
+
+      // Fallback: find any label with "Dobírka" on the page
+      if (!clicked) {
+        const allLabels = document.querySelectorAll('label');
+        for (const lbl of allLabels) {
+          if (lbl.textContent && lbl.textContent.trim() === 'Dobírka') {
+            lbl.click();
+            clicked = true;
+            console.log('[DPD ProfiECU] Step 5: fallback — clicked page-wide label "Dobírka"');
+            break;
+          }
+        }
+      }
+
+      if (!clicked) {
+        console.log('[DPD ProfiECU] Step 5: Dobírka NOT found anywhere');
       }
     }, 8000);
 
