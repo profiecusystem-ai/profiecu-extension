@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "DPD ProfiECU",
+  "version": "1.0",
+  "description": "Automaticke vyplneni DPD formulare z ProfiECU",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["https://shipping.dpdgroup.com/*", "https://profiecu.vercel.app/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://shipping.dpdgroup.com/*"],
+      "js": ["content.js"]
+    },
+    {
+      "matches": ["https://profiecu.vercel.app/*"],
+      "js": ["bridge.js"]
+    }
+  ]
+}
