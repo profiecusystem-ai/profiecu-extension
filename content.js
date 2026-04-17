@@ -156,25 +156,13 @@
         console.log('[DPD ProfiECU] Step 0: clicked "Rozbalit..."');
       }
 
-      // Fill email — simulate typing char by char for React validation
+      // Fill email via execCommand (triggers React's internal onChange)
       const emailField = document.querySelector('[name="email"]');
       if (emailField && data.email) {
         emailField.focus();
-        emailField.click();
-        emailField.value = '';
-        emailField.dispatchEvent(new Event('input', { bubbles: true }));
-        let current = '';
-        for (const char of data.email) {
-          current += char;
-          emailField.value = current;
-          emailField.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-          emailField.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
-          emailField.dispatchEvent(new Event('input', { bubbles: true }));
-          emailField.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
-        }
-        emailField.dispatchEvent(new Event('change', { bubbles: true }));
-        emailField.dispatchEvent(new Event('blur', { bubbles: true }));
-        console.log('[DPD ProfiECU] Step 0: email typed char-by-char:', data.email);
+        document.execCommand('selectAll');
+        document.execCommand('insertText', false, data.email);
+        console.log('[DPD ProfiECU] Step 0: email set via execCommand:', data.email);
       } else {
         console.log('[DPD ProfiECU] Step 0: email field not found or no email data');
       }
