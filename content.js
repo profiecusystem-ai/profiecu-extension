@@ -156,15 +156,17 @@
         console.log('[DPD ProfiECU] Step 0: clicked "Rozbalit..."');
       }
 
-      // Fill email via execCommand (triggers React's internal onChange)
-      const emailField = document.querySelector('[name="email"]');
-      if (emailField && data.email) {
-        emailField.focus();
+      // Fill receiver email — second [name="email"] on page (index 1)
+      const emailFields = document.querySelectorAll('[name="email"]');
+      const receiverEmail = emailFields[1];
+      console.log('[DPD ProfiECU] Step 0: found ' + emailFields.length + ' email fields');
+      if (receiverEmail && data.email) {
+        receiverEmail.focus();
         document.execCommand('selectAll');
         document.execCommand('insertText', false, data.email);
-        console.log('[DPD ProfiECU] Step 0: email set via execCommand:', data.email);
+        console.log('[DPD ProfiECU] Step 0: receiver email set via execCommand:', data.email);
       } else {
-        console.log('[DPD ProfiECU] Step 0: email field not found or no email data');
+        console.log('[DPD ProfiECU] Step 0: receiver email field not found or no email data');
       }
     }, 0);
 
