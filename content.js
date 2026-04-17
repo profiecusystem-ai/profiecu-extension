@@ -229,35 +229,46 @@
       console.log('[DPD ProfiECU] Step 3: city, street, phone, email');
     }, 3500);
 
-    // ═══ STEP 4 (6000ms): Select DPD Private main product ═══
+    // ═══ STEP 4 (6000ms): Select DPD Private via rw-dropdown-list ═══
     setTimeout(() => {
-      let found = false;
-      const productSelect = document.querySelector('[name="product.mainProductSelected"]');
-      if (productSelect && productSelect.tagName === 'SELECT') {
-        const privateOpt = Array.from(productSelect.options || []).find(o =>
-          o.text.includes('Private') || o.value.includes('DPD_PRIVATE') || o.value.includes('private') || o.value.includes('Private')
-        );
-        if (privateOpt) {
-          productSelect.value = privateOpt.value;
-          productSelect.dispatchEvent(new Event('change', { bubbles: true }));
-          found = true;
-        }
+      // 1. Open the rw-dropdown by clicking its input
+      const hiddenInput = document.querySelector('[name="product.mainProductSelected"]');
+      const dropdownContainer = hiddenInput && hiddenInput.closest('.rw-dropdown-list');
+      const dropdownInput = dropdownContainer && dropdownContainer.querySelector('.rw-dropdown-list-input');
+      if (dropdownInput) {
+        dropdownInput.click();
+        console.log('[DPD ProfiECU] Step 4a: opened rw-dropdown');
+      } else {
+        console.log('[DPD ProfiECU] Step 4a: rw-dropdown-list-input NOT found');
       }
-      if (!found) {
-        // Fallback: click label/element with "DPD Private"
-        const allEls = document.querySelectorAll('label, div, span, button, a, li, td');
-        for (const el of allEls) {
-          const text = el.textContent?.trim() || '';
-          if (text.includes('DPD Private')) {
-            clickEl(el);
-            const inner = el.querySelector('input[type="radio"], input[type="checkbox"]');
-            if (inner) clickEl(inner);
+
+      // 2. Wait 500ms for dropdown list to render, then click DPD Private
+      setTimeout(() => {
+        let found = false;
+        const options = document.querySelectorAll('.rw-list-option');
+        for (const opt of options) {
+          if (opt.textContent && opt.textContent.trim() === 'DPD Private') {
+            opt.click();
             found = true;
+            console.log('[DPD ProfiECU] Step 4b: DPD Private selected');
             break;
           }
         }
-      }
-      console.log('[DPD ProfiECU] Step 4: DPD Private', found ? 'selected' : 'NOT found');
+        if (!found) {
+          // Fallback: partial match
+          for (const opt of options) {
+            if (opt.textContent && opt.textContent.includes('Private')) {
+              opt.click();
+              found = true;
+              console.log('[DPD ProfiECU] Step 4b: DPD Private selected (partial match)');
+              break;
+            }
+          }
+        }
+        if (!found) {
+          console.log('[DPD ProfiECU] Step 4b: DPD Private NOT found in', options.length, 'options');
+        }
+      }, 500);
     }, 6000);
 
     // ═══ STEP 5 (8000ms): Check COD (Dobírka) in additional services ═══
