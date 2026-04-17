@@ -254,6 +254,20 @@
             opt.click();
             found = true;
             console.log('[DPD ProfiECU] Step 4b: DPD Private selected');
+
+            // Fill receiver email right after DPD Private selection
+            setTimeout(() => {
+              const emailFields = document.querySelectorAll('[name="email"]');
+              const receiverEmail = emailFields[1];
+              if (receiverEmail && data.email) {
+                receiverEmail.focus();
+                document.execCommand('selectAll');
+                document.execCommand('insertText', false, data.email);
+                console.log('[DPD ProfiECU] Step 4b: email set after DPD Private:', data.email);
+              } else {
+                console.log('[DPD ProfiECU] Step 4b: email field not found (' + emailFields.length + ' fields) or no data');
+              }
+            }, 500);
             break;
           }
         }
@@ -330,20 +344,6 @@
       console.log('[DPD ProfiECU] Autofill complete (no amount)');
     }
 
-    // ═══ STEP 7 (9500ms): Fill receiver email (last step — after all fields loaded) ═══
-    setTimeout(() => {
-      const emailFields = document.querySelectorAll('[name="email"]');
-      const receiverEmail = emailFields[1];
-      console.log('[DPD ProfiECU] Step 7: found ' + emailFields.length + ' email fields');
-      if (receiverEmail && data.email) {
-        receiverEmail.focus();
-        document.execCommand('selectAll');
-        document.execCommand('insertText', false, data.email);
-        console.log('[DPD ProfiECU] Step 7: email set:', data.email);
-      } else {
-        console.log('[DPD ProfiECU] Step 7: receiver email field not found or no email data');
-      }
-    }, 9500);
   }
 
   // Wait for page to be ready, then fill
