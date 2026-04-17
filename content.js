@@ -178,7 +178,7 @@
       }, 600);
     }, 600);
 
-    // ═══ STEP 2 (1000ms): ZIP code (triggers service loading) ═══
+    // ═══ STEP 2 (2000ms): ZIP code (triggers service loading) ═══
     setTimeout(() => {
       const zipField = find([
         '[name="zipCode"]',
@@ -188,9 +188,9 @@
       ]);
       setVal(zipField, data.zip);
       console.log('[DPD ProfiECU] Step 2: ZIP =', data.zip);
-    }, 1000);
+    }, 2000);
 
-    // ═══ STEP 3 (1600ms): City + Street + Phone + Email ═══
+    // ═══ STEP 3 (3500ms): City + Street + Phone + Email ═══
     setTimeout(() => {
       const cityField = find([
         '[name="cityName"]',
@@ -227,9 +227,9 @@
       setVal(emailField, data.email);
 
       console.log('[DPD ProfiECU] Step 3: city, street, phone, email');
-    }, 1600);
+    }, 3500);
 
-    // ═══ STEP 4 (3200ms): Select DPD Private main product ═══
+    // ═══ STEP 4 (6000ms): Select DPD Private main product ═══
     setTimeout(() => {
       let found = false;
       const productSelect = document.querySelector('[name="product.mainProductSelected"]');
@@ -258,9 +258,9 @@
         }
       }
       console.log('[DPD ProfiECU] Step 4: DPD Private', found ? 'selected' : 'NOT found');
-    }, 3200);
+    }, 6000);
 
-    // ═══ STEP 5 (4800ms): Check COD (Dobírka) in additional services ═══
+    // ═══ STEP 5 (8000ms): Check COD (Dobírka) in additional services ═══
     setTimeout(() => {
       const alreadySelected = document.querySelector('#shipment-selected-additional');
       if (alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka')) {
@@ -287,7 +287,7 @@
         }
       }
       console.log('[DPD ProfiECU] Step 5: Dobírka', clicked ? 'checked' : 'NOT found');
-    }, 4800);
+    }, 8000);
 
     // ═══ STEP 6: Fill COD amount (waitForElement — waits for amount field after Dobírka) ═══
     if (data.amount) {
