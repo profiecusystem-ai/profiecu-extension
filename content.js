@@ -303,71 +303,43 @@
       }, 500);
     }, 6000);
 
-    // ═══ STEP 5 (8000ms): Check COD (Dobírka) in additional services ═══
-    setTimeout(() => {
-      const alreadySelected = document.querySelector('#shipment-selected-additional');
-      const alreadyHasCod = alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka');
-      console.log('[DPD ProfiECU] Step 5: #shipment-selected-additional exists=' + !!alreadySelected + ', hasCOD=' + !!alreadyHasCod);
+    // ═══ STEP 5: Check COD (Dobírka) — waitForElement until label appears after DPD Private ═══
+    // Dobírka label only appears after DPD Private is selected, so poll for it
+    (function waitForDobirka() {
+      const timeout = 15000;
+      const interval = 300;
+      const start = Date.now();
+      console.log('[DPD ProfiECU] Step 5: waiting for Dobírka label...');
 
-      if (alreadyHasCod) {
-        console.log('[DPD ProfiECU] Step 5: COD already selected, skipping');
-        return;
-      }
-
-      // Try clicking checkbox in #shipment-additional-services
-      const additionalServices = document.querySelector('#shipment-additional-services');
-      console.log('[DPD ProfiECU] Step 5: #shipment-additional-services exists=' + !!additionalServices);
-
-      let clicked = false;
-      if (additionalServices) {
-        const checkboxes = additionalServices.querySelectorAll('input[type="checkbox"]');
-        const labels = additionalServices.querySelectorAll('label');
-        console.log('[DPD ProfiECU] Step 5: found ' + checkboxes.length + ' checkboxes, ' + labels.length + ' labels');
-
-        // Log all labels for debugging
-        for (const lbl of labels) {
-          console.log('[DPD ProfiECU] Step 5: label: "' + lbl.textContent.trim() + '"');
+      const poll = setInterval(() => {
+        // Check if already selected
+        const alreadySelected = document.querySelector('#shipment-selected-additional');
+        if (alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka')) {
+          clearInterval(poll);
+          console.log('[DPD ProfiECU] Step 5: COD already selected, skipping');
+          return;
         }
 
-        for (const lbl of labels) {
-          if (lbl.textContent && lbl.textContent.includes('Dobírka')) {
-            // Try checkbox inside label
-            const cb = lbl.querySelector('input[type="checkbox"]');
-            if (cb && !cb.checked) {
-              cb.click();
-              clicked = true;
-              console.log('[DPD ProfiECU] Step 5: clicked checkbox inside label');
-            } else if (cb && cb.checked) {
-              clicked = true;
-              console.log('[DPD ProfiECU] Step 5: checkbox already checked');
-            } else {
-              // No checkbox inside — click label itself
-              lbl.click();
-              clicked = true;
-              console.log('[DPD ProfiECU] Step 5: clicked label directly');
-            }
-            break;
+        // Look for Dobírka label inside #shipment-additional-services
+        const labels = document.querySelectorAll('#shipment-additional-services label');
+        const dobirkaLabel = Array.from(labels).find(el => el.textContent.trim() === 'Dobírka');
+
+        if (dobirkaLabel) {
+          clearInterval(poll);
+          dobirkaLabel.click();
+          console.log('[DPD ProfiECU] Step 5: Dobírka clicked after ' + (Date.now() - start) + 'ms');
+          return;
+        }
+
+        if (Date.now() - start > timeout) {
+          clearInterval(poll);
+          console.log('[DPD ProfiECU] Step 5: Dobírka NOT found after ' + timeout + 'ms, labels found: ' + labels.length);
+          for (const lbl of labels) {
+            console.log('[DPD ProfiECU] Step 5: label: "' + lbl.textContent.trim() + '"');
           }
         }
-      }
-
-      // Fallback: find any label with "Dobírka" on the page
-      if (!clicked) {
-        const allLabels = document.querySelectorAll('label');
-        for (const lbl of allLabels) {
-          if (lbl.textContent && lbl.textContent.trim() === 'Dobírka') {
-            lbl.click();
-            clicked = true;
-            console.log('[DPD ProfiECU] Step 5: fallback — clicked page-wide label "Dobírka"');
-            break;
-          }
-        }
-      }
-
-      if (!clicked) {
-        console.log('[DPD ProfiECU] Step 5: Dobírka NOT found anywhere');
-      }
-    }, 8000);
+      }, interval);
+    })();
 
     // ═══ STEP 6: Fill COD amount (waitForElement — waits for amount field after Dobírka) ═══
     if (data.amount) {
