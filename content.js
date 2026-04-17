@@ -100,8 +100,10 @@
     var maskDropdownInput = maskField.closest('.rw-dropdown-list')
       .querySelector('.rw-dropdown-list-input');
     reactDropdownClick(maskDropdownInput);
-    await delay(200);
+    console.log('[DPD] mask dropdown click dispatched');
+    await delay(1000);
     var option = await waitForEl('.rw-list-option', 5000);
+    console.log('[DPD] mask option found');
     reactDropdownClick(option);
     console.log('[DPD] mask option selected');
 
@@ -133,7 +135,8 @@
       var mainDropdownInput = mainDropdown.closest('.rw-dropdown-list')
         .querySelector('.rw-dropdown-list-input');
       reactDropdownClick(mainDropdownInput);
-      await delay(200);
+      console.log('[DPD] main product dropdown click dispatched');
+      await delay(1000);
       try {
         var dpdPrivate = await waitForEl(function () {
           return Array.from(document.querySelectorAll('.rw-list-option'))
@@ -153,7 +156,8 @@
       var addDropdownInput = addDropdown.closest('.rw-dropdown-list')
         .querySelector('.rw-dropdown-list-input');
       reactDropdownClick(addDropdownInput);
-      await delay(200);
+      console.log('[DPD] additional services dropdown click dispatched');
+      await delay(1000);
       try {
         var dobirka = await waitForEl(function () {
           return Array.from(document.querySelectorAll('.rw-list-option'))
