@@ -149,7 +149,7 @@
 
       // Expand "Kontaktní údaje" section
       const rozbalit = Array.from(document.querySelectorAll('button, a, span')).find(
-        el => el.textContent.trim() === 'Rozbalit...'
+        el => el.textContent.trim().includes('Rozbalit')
       );
       if (rozbalit) {
         rozbalit.click();
