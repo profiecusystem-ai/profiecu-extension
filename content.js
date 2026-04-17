@@ -112,38 +112,21 @@
       console.log('[DPD] checkbox clicked');
     }
 
-    // Step 1 — maskovací adresa
+    // Step 1 — maskovací adresa (ArrowDown opens, mousedown+click selects)
     var maskField = await waitForEl('[name="maskAddressName"]', 10000);
     console.log('[DPD] maskAddressName found');
-    var maskDropdown = maskField.closest('.rw-dropdown-list');
-    var maskDropdownInput = maskDropdown.querySelector('.rw-dropdown-list-input');
-
-    // Open via full pointer event sequence
+    var maskDropdownInput = maskField.closest('.rw-dropdown-list')
+      .querySelector('.rw-dropdown-list-input');
     maskDropdownInput.focus();
-    maskDropdownInput.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
-    maskDropdownInput.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
-    maskDropdownInput.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
-    maskDropdownInput.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
-    maskDropdownInput.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
-    console.log('[DPD] mask dropdown pointer events dispatched');
-
-    // Wait for auto-select — DPD auto-selects first option
-    try {
-      await waitForEl(function () {
-        return maskField.value && maskField.value.length > 0;
-      }, 2000);
-      console.log('[DPD] mask auto-selected:', maskField.value);
-    } catch (e) {
-      // Fallback — click option via MutationObserver
-      console.log('[DPD] auto-select failed, trying observer');
-      try {
-        var maskOption = await waitForElObserver('.rw-list-option', 3000);
-        maskOption.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        maskOption.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        console.log('[DPD] mask option clicked via observer');
-      } catch (e2) {
-        console.log('[DPD] mask observer fallback failed:', e2.message);
-      }
+    maskDropdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
+    await delay(500);
+    var maskOption = document.querySelector('.rw-list-option');
+    if (maskOption) {
+      maskOption.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      maskOption.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      console.log('[DPD] mask address selected');
+    } else {
+      console.log('[DPD] mask option not found after ArrowDown');
     }
 
     // Step 2 — PSČ
@@ -167,47 +150,43 @@
       console.log('[DPD] email set:', data.email);
     }
 
-    // Step 4 — DPD Private
+    // Step 4 — DPD Private (ArrowDown opens, find option, mousedown+click)
     await delay(2500);
     var mainDropdown = document.querySelector('[name="product.mainProductSelected"]');
     if (mainDropdown) {
       var mainDropdownInput = mainDropdown.closest('.rw-dropdown-list')
         .querySelector('.rw-dropdown-list-input');
-      reactDropdownClick(mainDropdownInput);
-      console.log('[DPD] main product dropdown click dispatched');
-      await delay(1000);
-      try {
-        var dpdPrivate = await waitForEl(function () {
-          return Array.from(document.querySelectorAll('.rw-list-option'))
-            .find(function (o) { return o.textContent.trim() === 'DPD Private'; });
-        }, 5000);
-        reactDropdownClick(dpdPrivate);
+      mainDropdownInput.focus();
+      mainDropdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
+      await delay(500);
+      var dpdPrivate = Array.from(document.querySelectorAll('.rw-list-option'))
+        .find(function (o) { return o.textContent.trim() === 'DPD Private'; });
+      if (dpdPrivate) {
+        dpdPrivate.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        dpdPrivate.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         console.log('[DPD] DPD Private selected');
-      } catch (e) {
-        console.log('[DPD] DPD Private not found:', e.message);
+      } else {
+        console.log('[DPD] DPD Private not found');
       }
     }
 
-    // Step 5 — Dobírka
+    // Step 5 — Dobírka (ArrowDown opens, find option, mousedown+click)
     await delay(1500);
     var addDropdown = document.querySelector('[name="product.additionalProductSelected"]');
     if (addDropdown) {
       var addDropdownInput = addDropdown.closest('.rw-dropdown-list')
         .querySelector('.rw-dropdown-list-input');
-      reactDropdownClick(addDropdownInput);
-      console.log('[DPD] additional services dropdown click dispatched');
-      await delay(1000);
-      try {
-        var dobirka = await waitForEl(function () {
-          return Array.from(document.querySelectorAll('.rw-list-option'))
-            .find(function (o) { return o.textContent.trim() === 'Dobírka'; });
-        }, 5000);
-        if (dobirka) {
-          reactDropdownClick(dobirka);
-          console.log('[DPD] Dobírka selected');
-        }
-      } catch (e) {
-        console.log('[DPD] Dobírka not found:', e.message);
+      addDropdownInput.focus();
+      addDropdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
+      await delay(500);
+      var dobirka = Array.from(document.querySelectorAll('.rw-list-option'))
+        .find(function (o) { return o.textContent.trim() === 'Dobírka'; });
+      if (dobirka) {
+        dobirka.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        dobirka.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        console.log('[DPD] Dobírka selected');
+      } else {
+        console.log('[DPD] Dobírka not found');
       }
     }
 
