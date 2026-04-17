@@ -87,14 +87,34 @@
 
     // ═══ STEP 0 (0ms): Name + hide sender address ═══
     setTimeout(() => {
-      // Receiver name
-      const nameField = find([
+      // Receiver name — try multiple selectors
+      const allInputs = document.querySelectorAll('input[type="text"]');
+      let nameField = find([
         '[name="receiverName"]',
+        '#receiverName',
         'input[placeholder*="jméno"]',
         'input[placeholder*="Jméno"]',
-        '#receiverName',
+        'input[placeholder*="příjemce"]',
+        'input[placeholder*="Příjemce"]',
       ]);
-      setVal(nameField, data.name);
+      // Fallback: find by label text
+      if (!nameField) {
+        const labels = document.querySelectorAll('label');
+        for (const lbl of labels) {
+          if (lbl.textContent && (lbl.textContent.includes('Jméno') || lbl.textContent.includes('jméno') || lbl.textContent.includes('příjemce'))) {
+            const forId = lbl.getAttribute('for');
+            if (forId) nameField = document.getElementById(forId);
+            if (!nameField) nameField = lbl.closest('.form-group, .field, div')?.querySelector('input');
+            break;
+          }
+        }
+      }
+      if (nameField) {
+        setVal(nameField, data.name);
+        console.log('[DPD ProfiECU] Step 0: name set to', data.name);
+      } else {
+        console.log('[DPD ProfiECU] Step 0: name field NOT found, tried', allInputs.length, 'inputs');
+      }
 
       // Check "hide sender address" checkbox
       const hideAddrCheckbox = find([
@@ -106,7 +126,7 @@
       if (hideAddrCheckbox && !hideAddrCheckbox.checked) {
         clickEl(hideAddrCheckbox);
       }
-      console.log('[DPD ProfiECU] Step 0: name + hide address');
+      console.log('[DPD ProfiECU] Step 0: hide address checkbox done');
     }, 0);
 
     // ═══ STEP 1 (600ms): Click mask address field to open dropdown ═══
@@ -192,20 +212,36 @@
 
     // ═══ STEP 4 (3200ms): Select DPD Private main product ═══
     setTimeout(() => {
-      // Look for DPD Private in product selection
-      const products = document.querySelectorAll(
-        '[class*="product"], [class*="service"], [data-product], .shipment-product, label'
-      );
-      for (const prod of products) {
-        if (prod.textContent && prod.textContent.includes('DPD Private')) {
-          clickEl(prod);
-          // Also try clicking radio/checkbox inside
-          const inner = prod.querySelector('input[type="radio"], input[type="checkbox"]');
+      let found = false;
+      // Search all clickable elements containing "DPD Private"
+      const allEls = document.querySelectorAll('label, div, span, button, a, li, td');
+      for (const el of allEls) {
+        const text = el.textContent?.trim() || '';
+        if (text.includes('DPD Private') && !text.includes('DPD Private ')) {
+          // Click the element itself
+          clickEl(el);
+          // Also try radio/checkbox inside or nearby
+          const inner = el.querySelector('input[type="radio"], input[type="checkbox"]');
           if (inner) clickEl(inner);
-          console.log('[DPD ProfiECU] Step 4: selected DPD Private');
+          // Try parent click too
+          if (el.parentElement) clickEl(el.parentElement);
+          console.log('[DPD ProfiECU] Step 4: clicked DPD Private:', text.substring(0, 40));
+          found = true;
           break;
         }
       }
+      if (!found) {
+        // Fallback: try exact match
+        for (const el of allEls) {
+          if (el.textContent?.trim() === 'DPD Private') {
+            clickEl(el);
+            console.log('[DPD ProfiECU] Step 4: exact match DPD Private');
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found) console.log('[DPD ProfiECU] Step 4: DPD Private NOT found');
     }, 3200);
 
     // ═══ STEP 5 (4800ms): Check COD (Dobírka) in additional services ═══
@@ -217,37 +253,40 @@
         return;
       }
 
-      // Find COD checkbox in additional services
-      const additionalServices = document.querySelector('#shipment-additional-services');
-      if (additionalServices) {
-        const labels = additionalServices.querySelectorAll('label');
-        for (const label of labels) {
-          if (label.textContent && label.textContent.includes('Dobírka')) {
-            const checkbox = label.querySelector('input[type="checkbox"]') || label.previousElementSibling;
-            if (checkbox && checkbox.tagName === 'INPUT' && !checkbox.checked) {
-              clickEl(checkbox);
-            } else {
-              clickEl(label);
-            }
-            console.log('[DPD ProfiECU] Step 5: COD checkbox clicked');
-            break;
+      let clicked = false;
+      // Search all labels/elements for "Dobírka"
+      const allEls = document.querySelectorAll('label, div, span, li');
+      for (const el of allEls) {
+        if (el.textContent && el.textContent.includes('Dobírka') && !el.textContent.includes('Pojištění')) {
+          const checkbox = el.querySelector('input[type="checkbox"]') || el.previousElementSibling;
+          if (checkbox && checkbox.tagName === 'INPUT' && !checkbox.checked) {
+            clickEl(checkbox);
+            clicked = true;
+          } else {
+            clickEl(el);
+            clicked = true;
           }
-        }
-      } else {
-        // Fallback: search all checkboxes/labels
-        const codLabel = findByText('label', 'Dobírka');
-        if (codLabel) {
-          const checkbox = codLabel.querySelector('input[type="checkbox"]');
-          if (checkbox && !checkbox.checked) clickEl(checkbox);
-          else clickEl(codLabel);
-          console.log('[DPD ProfiECU] Step 5: COD (fallback)');
+          console.log('[DPD ProfiECU] Step 5: COD clicked via:', el.tagName, el.textContent?.substring(0, 30));
+          break;
         }
       }
+      if (!clicked) console.log('[DPD ProfiECU] Step 5: Dobírka NOT found');
     }, 4800);
 
+    // ═══ STEP 6 (6800ms): Fill COD amount after Dobírka loads (2000ms wait) ═══
     setTimeout(() => {
+      const amountField = document.querySelector('#amount-1, [id="amount-1"], input[name="amount-1"]');
+      if (amountField && data.amount) {
+        amountField.removeAttribute('disabled');
+        amountField.removeAttribute('readonly');
+        setVal(amountField, data.amount);
+        amountField.dispatchEvent(new Event('blur', { bubbles: true }));
+        console.log('[DPD ProfiECU] Step 6: COD amount set to', data.amount);
+      } else {
+        console.log('[DPD ProfiECU] Step 6: amount field not found or no amount data');
+      }
       console.log('[DPD ProfiECU] Autofill complete');
-    }, 6000);
+    }, 6800);
   }
 
   // Wait for page to be ready, then fill
