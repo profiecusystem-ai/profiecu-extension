@@ -125,6 +125,61 @@
     return new Promise(function (r) { setTimeout(r, ms); });
   }
 
+  // ═══ Wait for label by text via MutationObserver ═══
+  function waitForLabel(text, timeout) {
+    timeout = timeout || 10000;
+    return new Promise(function (resolve, reject) {
+      var find = function () {
+        return Array.from(document.querySelectorAll('label'))
+          .find(function (l) { return l.textContent.trim() === text; });
+      };
+      var existing = find();
+      if (existing) return resolve(existing);
+      var obs = new MutationObserver(function () {
+        var el = find();
+        if (el) { obs.disconnect(); resolve(el); }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(function () {
+        obs.disconnect();
+        reject(new Error('Label "' + text + '" timeout'));
+      }, timeout);
+    });
+  }
+
+  // ═══ Check if label's checkbox is checked ═══
+  function verifyChecked(label) {
+    var forId = label.getAttribute('for');
+    var checkbox = forId ? document.getElementById(forId) : null;
+    if (!checkbox) checkbox = label.querySelector('input[type="checkbox"]');
+    if (!checkbox) checkbox = label.parentElement &&
+      label.parentElement.querySelector('input[type="checkbox"]');
+    return checkbox ? checkbox.checked : false;
+  }
+
+  // ═══ Realistic label click with full pointer sequence ═══
+  async function realisticLabelClick(label) {
+    label.scrollIntoView({ block: 'center', behavior: 'instant' });
+    await delay(100);
+    var rect = label.getBoundingClientRect();
+    var x = rect.left + rect.width / 2;
+    var y = rect.top + rect.height / 2;
+    function fire(type, EventCtor) {
+      EventCtor = EventCtor || MouseEvent;
+      label.dispatchEvent(new EventCtor(type, {
+        bubbles: true, cancelable: true, composed: true,
+        view: window, button: 0,
+        buttons: (type === 'mousedown' || type === 'pointerdown') ? 1 : 0,
+        clientX: x, clientY: y, pointerType: 'mouse'
+      }));
+    }
+    fire('pointerdown', PointerEvent);
+    fire('mousedown');
+    fire('pointerup', PointerEvent);
+    fire('mouseup');
+    fire('click');
+  }
+
   // ═══ Main async run ═══
   async function run(data) {
     console.log('[DPD] run() start, data:', data);
@@ -237,33 +292,26 @@
     }
 
     // Step 5b — zaškrtni Dobírku přes label click
-    await delay(500);
-    var allLabels = document.querySelectorAll('label');
-    var dobirkaLabel = null;
+    try {
+      var dobirkaLabel = await waitForLabel('Dobírka', 10000);
+      console.log('[DPD] Dobírka label found');
 
-    // Try index 43 first
-    if (allLabels[43] && allLabels[43].textContent.trim() === 'Dobírka') {
-      dobirkaLabel = allLabels[43];
-    } else {
-      // Fallback — find by text
-      dobirkaLabel = Array.from(allLabels).find(function (l) {
-        return l.textContent.trim() === 'Dobírka';
-      });
-    }
-
-    if (dobirkaLabel) {
-      var labelRect = dobirkaLabel.getBoundingClientRect();
-      dobirkaLabel.dispatchEvent(new MouseEvent('mousedown', {
-        bubbles: true, cancelable: true,
-        clientX: labelRect.left + labelRect.width / 2,
-        clientY: labelRect.top + labelRect.height / 2
-      }));
-      dobirkaLabel.dispatchEvent(new MouseEvent('click', {
-        bubbles: true, cancelable: true,
-        clientX: labelRect.left + labelRect.width / 2,
-        clientY: labelRect.top + labelRect.height / 2
-      }));
-      console.log('[DPD] Dobírka checkbox clicked');
+      if (verifyChecked(dobirkaLabel)) {
+        console.log('[DPD] Dobírka already checked');
+      } else {
+        await realisticLabelClick(dobirkaLabel);
+        await delay(300);
+        if (!verifyChecked(dobirkaLabel)) {
+          console.log('[DPD] retry Dobírka click');
+          var forId = dobirkaLabel.getAttribute('for');
+          var cb = forId ? document.getElementById(forId) : null;
+          if (cb) await realisticLabelClick(cb);
+          await delay(300);
+        }
+        console.log('[DPD] Dobírka checked:', verifyChecked(dobirkaLabel));
+      }
+    } catch (e) {
+      console.log('[DPD] Dobírka label not found:', e.message);
     }
 
     // Step 6 — částka dobírky
