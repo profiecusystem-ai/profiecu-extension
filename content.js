@@ -217,52 +217,29 @@
       ]);
       setVal(phoneField, data.phone);
 
-      let emailField = find([
-        '[name="receiverEmail"]',
-        '[name="receiver.email"]',
-        '[name="email"]',
-        'input[type="email"]',
-        'input[placeholder*="E-mail"]',
-        'input[placeholder*="email"]',
-        '#email',
-      ]);
-      // Fallback: find input near label "E-mail"
-      if (!emailField) {
-        const labels = document.querySelectorAll('label');
-        for (const lbl of labels) {
-          if (lbl.textContent && (lbl.textContent.trim() === 'E-mail' || lbl.textContent.trim() === 'Email')) {
-            const forId = lbl.getAttribute('for');
-            if (forId) emailField = document.getElementById(forId);
-            if (!emailField) {
-              // Try input inside the same parent container
-              const parent = lbl.closest('.form-group, .field, .rw-widget, div');
-              if (parent) emailField = parent.querySelector('input');
-            }
-            if (!emailField) {
-              // Try next sibling input
-              let next = lbl.nextElementSibling;
-              while (next) {
-                if (next.tagName === 'INPUT') { emailField = next; break; }
-                const innerInput = next.querySelector('input');
-                if (innerInput) { emailField = innerInput; break; }
-                next = next.nextElementSibling;
-              }
-            }
-            console.log('[DPD ProfiECU] Step 3: email label found, for=' + forId + ', input=' + (emailField ? emailField.name || emailField.id || 'unnamed' : 'NOT found'));
-            break;
-          }
+      // Rozbal sekci Kontaktní údaje
+      const rozbalit = Array.from(document.querySelectorAll('button, a, span')).find(
+        el => el.textContent.trim() === 'Rozbalit...'
+      );
+      if (rozbalit) {
+        rozbalit.click();
+        console.log('[DPD ProfiECU] Step 3: clicked "Rozbalit..." to expand contact section');
+      }
+
+      // Wait 500ms for email field to appear after expanding
+      setTimeout(() => {
+        const emailField = document.querySelector('[name="email"]');
+        if (emailField && data.email) {
+          setVal(emailField, data.email);
+          console.log('[DPD ProfiECU] Step 3: email set to "' + data.email + '", value="' + emailField.value + '"');
+        } else {
+          console.log('[DPD ProfiECU] Step 3: email MISS — field=' + !!emailField + ', data.email="' + data.email + '"');
         }
-      }
-      console.log('[DPD ProfiECU] Step 3: data.email="' + data.email + '", emailField=' + (emailField ? emailField.tagName + '[name=' + emailField.name + ', type=' + emailField.type + ']' : 'NULL'));
-      if (emailField && data.email) {
-        setVal(emailField, data.email);
-        console.log('[DPD ProfiECU] Step 3: email field value after setVal="' + emailField.value + '"');
-      }
+      }, 500);
 
       console.log('[DPD ProfiECU] Step 3: city=' + (cityField ? 'OK' : 'MISS') +
         ' street=' + (streetField ? 'OK' : 'MISS') +
-        ' phone=' + (phoneField ? 'OK' : 'MISS') +
-        ' email=' + (emailField ? 'OK' : 'MISS'));
+        ' phone=' + (phoneField ? 'OK' : 'MISS'));
     }, 3500);
 
     // ═══ STEP 4 (6000ms): Select DPD Private via rw-dropdown-list ═══
