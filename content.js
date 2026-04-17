@@ -28,6 +28,14 @@
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
+  // ═══ React dropdown click (mousedown + mouseup + click) ═══
+  function reactDropdownClick(el) {
+    var opts = { bubbles: true, cancelable: true, view: window };
+    el.dispatchEvent(new MouseEvent('mousedown', opts));
+    el.dispatchEvent(new MouseEvent('mouseup', opts));
+    el.dispatchEvent(new MouseEvent('click', opts));
+  }
+
   // ═══ Wait for element (Promise-based) ═══
   function waitForEl(predicate, timeout, interval) {
     timeout = timeout || 5000;
@@ -89,11 +97,12 @@
     // Step 1 — maskovací adresa
     var maskField = await waitForEl('[name="maskAddressName"]', 10000);
     console.log('[DPD] maskAddressName found');
-    var dropdownInput = maskField.closest('.rw-dropdown-list')
+    var maskDropdownInput = maskField.closest('.rw-dropdown-list')
       .querySelector('.rw-dropdown-list-input');
-    dropdownInput.click();
-    var option = await waitForEl('.rw-list-option', 3000);
-    option.click();
+    reactDropdownClick(maskDropdownInput);
+    await delay(200);
+    var option = await waitForEl('.rw-list-option', 5000);
+    reactDropdownClick(option);
     console.log('[DPD] mask option selected');
 
     // Step 2 — PSČ
@@ -121,14 +130,16 @@
     await delay(2500);
     var mainDropdown = document.querySelector('[name="product.mainProductSelected"]');
     if (mainDropdown) {
-      mainDropdown.closest('.rw-dropdown-list')
-        .querySelector('.rw-dropdown-list-input').click();
+      var mainDropdownInput = mainDropdown.closest('.rw-dropdown-list')
+        .querySelector('.rw-dropdown-list-input');
+      reactDropdownClick(mainDropdownInput);
+      await delay(200);
       try {
         var dpdPrivate = await waitForEl(function () {
           return Array.from(document.querySelectorAll('.rw-list-option'))
             .find(function (o) { return o.textContent.trim() === 'DPD Private'; });
-        }, 3000);
-        dpdPrivate.click();
+        }, 5000);
+        reactDropdownClick(dpdPrivate);
         console.log('[DPD] DPD Private selected');
       } catch (e) {
         console.log('[DPD] DPD Private not found:', e.message);
@@ -139,15 +150,17 @@
     await delay(1500);
     var addDropdown = document.querySelector('[name="product.additionalProductSelected"]');
     if (addDropdown) {
-      addDropdown.closest('.rw-dropdown-list')
-        .querySelector('.rw-dropdown-list-input').click();
+      var addDropdownInput = addDropdown.closest('.rw-dropdown-list')
+        .querySelector('.rw-dropdown-list-input');
+      reactDropdownClick(addDropdownInput);
+      await delay(200);
       try {
         var dobirka = await waitForEl(function () {
           return Array.from(document.querySelectorAll('.rw-list-option'))
             .find(function (o) { return o.textContent.trim() === 'Dobírka'; });
-        }, 3000);
+        }, 5000);
         if (dobirka) {
-          dobirka.click();
+          reactDropdownClick(dobirka);
           console.log('[DPD] Dobírka selected');
         }
       } catch (e) {
