@@ -44,27 +44,36 @@
     return null;
   }
 
-  // Fetch data from ProfiECU API
+  // Fetch data from ProfiECU API with retry
   const API_URL = 'https://profiecu.vercel.app/api/dpd-data';
 
   async function fetchData() {
-    console.log('[DPD ProfiECU] Fetching from', API_URL);
-    try {
-      const res = await fetch(API_URL);
-      const data = await res.json();
-      console.log('[DPD ProfiECU] API response:', data);
-      return data && data.name ? data : null;
-    } catch (e) {
-      console.warn('[DPD ProfiECU] Fetch error:', e);
-      return null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      console.log('[DPD ProfiECU] Fetch attempt', attempt, 'from', API_URL);
+      try {
+        const res = await fetch(API_URL + '?t=' + Date.now(), {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        const data = await res.json();
+        console.log('[DPD ProfiECU] Response:', data);
+        if (data && data.name) return data;
+      } catch (e) {
+        console.warn('[DPD ProfiECU] Fetch error:', e);
+      }
+      if (attempt < 3) {
+        console.log('[DPD ProfiECU] Waiting 2s before retry...');
+        await new Promise((r) => setTimeout(r, 2000));
+      }
     }
+    return null;
   }
 
   async function fillForm() {
     console.log('[DPD ProfiECU] fillForm() called');
     const data = await fetchData();
     if (!data) {
-      console.log('[DPD ProfiECU] No autofill data from API');
+      console.log('[DPD ProfiECU] No data after 3 attempts');
       return;
     }
 
