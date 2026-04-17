@@ -112,6 +112,9 @@
       console.log('[DPD] checkbox clicked');
     }
 
+    // Wait for React to render maskAddressName after checkbox
+    await delay(1000);
+
     // Step 1 — maskovací adresa (ArrowDown opens, mousedown+click selects)
     var maskField = await waitForEl('[name="maskAddressName"]', 10000);
     console.log('[DPD] maskAddressName found');
