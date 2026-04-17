@@ -4,19 +4,16 @@
 (function () {
   'use strict';
 
-  // React-compatible value setter — triggers React's onChange
+  // Value setter — direct assignment + full event dispatch
   function setVal(el, value) {
     if (!el) return;
-    const nativeInputValueSetter =
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set ||
-      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-    if (nativeInputValueSetter) {
-      nativeInputValueSetter.call(el, value);
-    } else {
-      el.value = value;
-    }
+    el.focus();
+    el.value = value;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new Event('blur', { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
   }
 
   // Click helper
@@ -33,6 +30,28 @@
       if (el) return el;
     }
     return null;
+  }
+
+  // Wait for element to appear in DOM (polling every 300ms)
+  function waitForElement(selectors, timeout) {
+    if (!timeout) timeout = 15000;
+    const list = selectors.split(',').map(s => s.trim());
+    return new Promise((resolve, reject) => {
+      const interval = setInterval(() => {
+        for (const sel of list) {
+          const el = document.querySelector(sel);
+          if (el) {
+            clearInterval(interval);
+            resolve(el);
+            return;
+          }
+        }
+      }, 300);
+      setTimeout(() => {
+        clearInterval(interval);
+        reject('timeout: ' + selectors);
+      }, timeout);
+    });
   }
 
   // Find checkbox/label by text content
@@ -210,83 +229,82 @@
       console.log('[DPD ProfiECU] Step 3: city, street, phone, email');
     }, 1600);
 
-    // ═══ STEP 4 (3200ms): Select DPD Private main product ═══
-    setTimeout(() => {
-      let found = false;
-      // Search all clickable elements containing "DPD Private"
-      const allEls = document.querySelectorAll('label, div, span, button, a, li, td');
-      for (const el of allEls) {
-        const text = el.textContent?.trim() || '';
-        if (text.includes('DPD Private') && !text.includes('DPD Private ')) {
-          // Click the element itself
-          clickEl(el);
-          // Also try radio/checkbox inside or nearby
-          const inner = el.querySelector('input[type="radio"], input[type="checkbox"]');
-          if (inner) clickEl(inner);
-          // Try parent click too
-          if (el.parentElement) clickEl(el.parentElement);
-          console.log('[DPD ProfiECU] Step 4: clicked DPD Private:', text.substring(0, 40));
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        // Fallback: try exact match
-        for (const el of allEls) {
-          if (el.textContent?.trim() === 'DPD Private') {
-            clickEl(el);
-            console.log('[DPD ProfiECU] Step 4: exact match DPD Private');
+    // ═══ STEP 4: Select DPD Private (waitForElement — waits for services to load after ZIP) ═══
+    // ═══ STEP 5: Check COD/Dobírka (waitForElement — waits for additional services) ═══
+    // ═══ STEP 6: Fill COD amount (waitForElement — waits for amount field after COD check) ═══
+    waitForElement('[name="product.mainProductSelected"]', 15000)
+      .then((productSelect) => {
+        // Step 4: find and select DPD Private
+        let found = false;
+        if (productSelect.tagName === 'SELECT') {
+          const privateOpt = Array.from(productSelect.options || []).find(o =>
+            o.text.includes('Private') || o.value.includes('private') || o.value.includes('Private')
+          );
+          if (privateOpt) {
+            productSelect.value = privateOpt.value;
+            productSelect.dispatchEvent(new Event('change', { bubbles: true }));
             found = true;
-            break;
           }
         }
-      }
-      if (!found) console.log('[DPD ProfiECU] Step 4: DPD Private NOT found');
-    }, 3200);
-
-    // ═══ STEP 5 (4800ms): Check COD (Dobírka) in additional services ═══
-    setTimeout(() => {
-      // Check if COD is already selected
-      const alreadySelected = document.querySelector('#shipment-selected-additional');
-      if (alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka')) {
-        console.log('[DPD ProfiECU] Step 5: COD already selected, skipping');
-        return;
-      }
-
-      let clicked = false;
-      // Search all labels/elements for "Dobírka"
-      const allEls = document.querySelectorAll('label, div, span, li');
-      for (const el of allEls) {
-        if (el.textContent && el.textContent.includes('Dobírka') && !el.textContent.includes('Pojištění')) {
-          const checkbox = el.querySelector('input[type="checkbox"]') || el.previousElementSibling;
-          if (checkbox && checkbox.tagName === 'INPUT' && !checkbox.checked) {
-            clickEl(checkbox);
-            clicked = true;
-          } else {
-            clickEl(el);
-            clicked = true;
+        if (!found) {
+          // Fallback: click label/element with "DPD Private"
+          const allEls = document.querySelectorAll('label, div, span, button, a, li, td');
+          for (const el of allEls) {
+            const text = el.textContent?.trim() || '';
+            if (text.includes('DPD Private')) {
+              clickEl(el);
+              const inner = el.querySelector('input[type="radio"], input[type="checkbox"]');
+              if (inner) clickEl(inner);
+              found = true;
+              break;
+            }
           }
-          console.log('[DPD ProfiECU] Step 5: COD clicked via:', el.tagName, el.textContent?.substring(0, 30));
-          break;
         }
-      }
-      if (!clicked) console.log('[DPD ProfiECU] Step 5: Dobírka NOT found');
-    }, 4800);
+        console.log('[DPD ProfiECU] Step 4: DPD Private', found ? 'selected' : 'NOT found');
 
-    // ═══ STEP 6 (6800ms): Fill COD amount after Dobírka loads (2000ms wait) ═══
-    setTimeout(() => {
-      const amountField = document.querySelector('#amount-1, [id="amount-1"], input[name="amount-1"]');
-      if (amountField && data.amount) {
-        amountField.removeAttribute('disabled');
-        amountField.removeAttribute('readonly');
-        setVal(amountField, data.amount);
-        amountField.dispatchEvent(new Event('blur', { bubbles: true }));
-        console.log('[DPD ProfiECU] Step 6: COD amount set to', data.amount);
-      } else {
-        console.log('[DPD ProfiECU] Step 6: amount field not found or no amount data');
-      }
-      console.log('[DPD ProfiECU] Autofill complete');
-    }, 6800);
+        // Step 5: wait for additional services section
+        return waitForElement('#shipment-additional-services, [data-service="COD"], .additional-services', 15000);
+      })
+      .then((servicesSection) => {
+        const alreadySelected = document.querySelector('#shipment-selected-additional');
+        if (alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka')) {
+          console.log('[DPD ProfiECU] Step 5: COD already selected');
+        } else {
+          let clicked = false;
+          const labels = servicesSection.querySelectorAll('label');
+          for (const lbl of labels) {
+            if (lbl.textContent && lbl.textContent.includes('Dobírka') && !lbl.textContent.includes('Pojištění')) {
+              const checkbox = lbl.querySelector('input[type="checkbox"]') || lbl.previousElementSibling;
+              if (checkbox && checkbox.tagName === 'INPUT' && !checkbox.checked) {
+                clickEl(checkbox);
+                clicked = true;
+              } else {
+                clickEl(lbl);
+                clicked = true;
+              }
+              break;
+            }
+          }
+          console.log('[DPD ProfiECU] Step 5: Dobírka', clicked ? 'checked' : 'NOT found');
+        }
+
+        // Step 6: wait for COD amount field
+        if (data.amount) {
+          return waitForElement('#amount-1, [name="codAmount"], [name="cod.amount"], [name="cashOnDeliveryAmount"]', 15000);
+        }
+      })
+      .then((amountField) => {
+        if (amountField && data.amount) {
+          amountField.removeAttribute('disabled');
+          amountField.removeAttribute('readonly');
+          setVal(amountField, data.amount);
+          console.log('[DPD ProfiECU] Step 6: COD amount set to', data.amount);
+        }
+        console.log('[DPD ProfiECU] Autofill complete');
+      })
+      .catch((err) => {
+        console.log('[DPD ProfiECU] Error:', err);
+      });
   }
 
   // Wait for page to be ready, then fill
