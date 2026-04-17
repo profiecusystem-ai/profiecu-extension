@@ -47,20 +47,24 @@
   // Read data from chrome.storage.local (shared across origins)
   function getDataFromStorage() {
     return new Promise((resolve) => {
+      console.log('[DPD ProfiECU] Reading chrome.storage.local...');
       if (chrome?.storage?.local) {
         chrome.storage.local.get('dpd_autofill', (result) => {
+          console.log('[DPD ProfiECU] Storage result:', result);
           resolve(result.dpd_autofill || null);
         });
       } else {
+        console.log('[DPD ProfiECU] chrome.storage.local NOT available');
         resolve(null);
       }
     });
   }
 
   async function fillForm() {
+    console.log('[DPD ProfiECU] fillForm() called');
     const data = await getDataFromStorage();
     if (!data) {
-      console.log('[DPD ProfiECU] No autofill data found');
+      console.log('[DPD ProfiECU] No autofill data found in storage');
       return;
     }
 

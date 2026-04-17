@@ -1,13 +1,13 @@
-// Bridge: listens for dpd_autofill events from ProfiECU page
+// Bridge: listens for postMessage from ProfiECU page
 // and stores data in chrome.storage.local (shared across origins)
 
-window.addEventListener('dpd_autofill_set', (e) => {
-  if (e.detail && chrome?.storage?.local) {
-    chrome.storage.local.set({ dpd_autofill: e.detail }, () => {
-      console.log('[DPD Bridge] Data saved to chrome.storage.local');
+console.log('[DPD Bridge] Loaded on', window.location.hostname);
+
+window.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'dpd_autofill_set' && event.data.data) {
+    console.log('[DPD Bridge] Received data:', event.data.data);
+    chrome.storage.local.set({ dpd_autofill: event.data.data }, () => {
+      console.log('[DPD Bridge] Saved to chrome.storage.local');
     });
   }
 });
-
-// Signal to the page that the extension is available
-window.dispatchEvent(new CustomEvent('dpd_extension_ready'));
