@@ -126,19 +126,28 @@
       console.log('[DPD] Step 0: expanded contacts');
     }
 
-    // ═══ STEP 1 (600ms): Maskovací adresa dropdown → first option ═══
+    // ═══ STEP 1 (600ms + polling): Maskovací adresa dropdown → first option ═══
     setTimeout(function () {
-      var f = document.querySelector('[name="maskAddressName"]');
-      if (f) {
-        f.closest('.rw-dropdown-list').querySelector('.rw-dropdown-list-input').click();
-        setTimeout(function () {
-          var o = document.querySelector('.rw-list-option');
-          if (o) o.click();
-          console.log('[DPD] Step 1: mask address selected');
-        }, 500);
-      } else {
-        console.log('[DPD] Step 1: maskAddressName NULL at 600ms');
-      }
+      var attempts = 0;
+      var maxAttempts = 20;
+      var interval = setInterval(function () {
+        attempts++;
+        var f = document.querySelector('[name="maskAddressName"]');
+        if (f) {
+          clearInterval(interval);
+          f.closest('.rw-dropdown-list').querySelector('.rw-dropdown-list-input').click();
+          setTimeout(function () {
+            var o = document.querySelector('.rw-list-option');
+            if (o) {
+              o.click();
+              console.log('[DPD] Step 1: mask address selected');
+            }
+          }, 500);
+        } else if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          console.log('[DPD] Step 1: maskAddressName not found after', attempts, 'attempts');
+        }
+      }, 150);
     }, 600);
 
     // ═══ STEP 2 (2000ms): ZIP code ═══
