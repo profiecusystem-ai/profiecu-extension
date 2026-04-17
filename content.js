@@ -303,43 +303,48 @@
       }, 500);
     }, 6000);
 
-    // ═══ STEP 5: Check COD (Dobírka) — waitForElement until label appears after DPD Private ═══
-    // Dobírka label only appears after DPD Private is selected, so poll for it
-    (function waitForDobirka() {
-      const timeout = 15000;
-      const interval = 300;
-      const start = Date.now();
-      console.log('[DPD ProfiECU] Step 5: waiting for Dobírka label...');
+    // ═══ STEP 5 (8000ms): Open "Doplňkové služby" dropdown, then click "Dobírka" ═══
+    setTimeout(() => {
+      // Check if already selected
+      const alreadySelected = document.querySelector('#shipment-selected-additional');
+      if (alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka')) {
+        console.log('[DPD ProfiECU] Step 5: COD already selected, skipping');
+        return;
+      }
 
-      const poll = setInterval(() => {
-        // Check if already selected
-        const alreadySelected = document.querySelector('#shipment-selected-additional');
-        if (alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka')) {
-          clearInterval(poll);
-          console.log('[DPD ProfiECU] Step 5: COD already selected, skipping');
-          return;
+      // 1. Find and click "Doplňkové služby" dropdown to open it
+      const doplnkoveLabel = Array.from(document.querySelectorAll('label')).find(
+        el => el.textContent.trim() === 'Doplňkové služby'
+      );
+      if (doplnkoveLabel) {
+        const dropdown = doplnkoveLabel.closest('.rw-dropdown-list') || doplnkoveLabel.nextElementSibling;
+        if (dropdown) {
+          const dropdownInput = dropdown.querySelector('.rw-dropdown-list-input') || dropdown;
+          dropdownInput.click();
+          console.log('[DPD ProfiECU] Step 5a: opened Doplňkové služby dropdown');
+        } else {
+          console.log('[DPD ProfiECU] Step 5a: dropdown container NOT found near label');
         }
+      } else {
+        console.log('[DPD ProfiECU] Step 5a: label "Doplňkové služby" NOT found');
+      }
 
-        // Look for Dobírka label inside #shipment-additional-services
-        const labels = document.querySelectorAll('#shipment-additional-services label');
-        const dobirkaLabel = Array.from(labels).find(el => el.textContent.trim() === 'Dobírka');
-
-        if (dobirkaLabel) {
-          clearInterval(poll);
-          dobirkaLabel.click();
-          console.log('[DPD ProfiECU] Step 5: Dobírka clicked after ' + (Date.now() - start) + 'ms');
-          return;
-        }
-
-        if (Date.now() - start > timeout) {
-          clearInterval(poll);
-          console.log('[DPD ProfiECU] Step 5: Dobírka NOT found after ' + timeout + 'ms, labels found: ' + labels.length);
-          for (const lbl of labels) {
-            console.log('[DPD ProfiECU] Step 5: label: "' + lbl.textContent.trim() + '"');
+      // 2. Wait 500ms for dropdown list to render, then click "Dobírka"
+      setTimeout(() => {
+        const options = document.querySelectorAll('.rw-list-option');
+        const dobirka = Array.from(options).find(el => el.textContent.trim() === 'Dobírka');
+        if (dobirka) {
+          dobirka.click();
+          console.log('[DPD ProfiECU] Step 5b: Dobírka selected');
+        } else {
+          // Log all options for debugging
+          console.log('[DPD ProfiECU] Step 5b: Dobírka NOT found in ' + options.length + ' options');
+          for (const opt of options) {
+            console.log('[DPD ProfiECU] Step 5b: option: "' + opt.textContent.trim() + '"');
           }
         }
-      }, interval);
-    })();
+      }, 500);
+    }, 8000);
 
     // ═══ STEP 6: Fill COD amount (waitForElement — waits for amount field after Dobírka) ═══
     if (data.amount) {
