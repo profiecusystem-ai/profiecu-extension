@@ -1,352 +1,215 @@
-// DPD ProfiECU — Content Script
-// Reads dpd_autofill from ProfiECU localStorage and fills DPD shipping form
+// content.js — MAIN world
+// Has access to page's JS context (React internals, native prototypes)
 
 (function () {
   'use strict';
 
-  // Value setter — direct assignment + full event dispatch
-  function setVal(el, value) {
+  // ═══ Native value setter — works with React controlled inputs ═══
+  var nativeInputSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype, 'value'
+  ).set;
+
+  function setNativeValue(el, value) {
     if (!el) return;
     el.focus();
-    el.value = value;
+    nativeInputSetter.call(el, value);
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new Event('blur', { bubbles: true }));
-    el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
-    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
   }
 
-  // Click helper
-  function clickEl(el) {
-    if (!el) return;
-    el.click();
-    el.dispatchEvent(new Event('click', { bubbles: true }));
-  }
-
-  // Find element by various selectors
-  function find(selectors) {
-    for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      if (el) return el;
-    }
-    return null;
-  }
-
-  // Wait for element to appear in DOM (polling every 300ms)
-  function waitForElement(selectors, timeout) {
-    if (!timeout) timeout = 15000;
-    const list = selectors.split(',').map(s => s.trim());
-    return new Promise((resolve, reject) => {
-      const interval = setInterval(() => {
-        for (const sel of list) {
-          const el = document.querySelector(sel);
-          if (el) {
-            clearInterval(interval);
-            resolve(el);
-            return;
-          }
-        }
-      }, 300);
-      setTimeout(() => {
-        clearInterval(interval);
-        reject('timeout: ' + selectors);
-      }, timeout);
-    });
-  }
-
-  // Find checkbox/label by text content
-  function findByText(tag, text) {
-    const els = document.querySelectorAll(tag);
-    for (const el of els) {
-      if (el.textContent && el.textContent.includes(text)) return el;
-    }
-    return null;
-  }
-
-  // Fetch data from ProfiECU API with retry
-  const API_URL = 'https://profiecu.vercel.app/api/dpd-data';
-
-  async function fetchData() {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      console.log('[DPD ProfiECU] Fetch attempt', attempt, 'from', API_URL);
-      try {
-        const res = await fetch(API_URL + '?t=' + Date.now(), {
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache' }
-        });
-        const data = await res.json();
-        console.log('[DPD ProfiECU] Response:', data);
-        if (data && data.name) return data;
-      } catch (e) {
-        console.warn('[DPD ProfiECU] Fetch error:', e);
-      }
-      if (attempt < 3) {
-        console.log('[DPD ProfiECU] Waiting 2s before retry...');
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-    }
-    return null;
-  }
-
-
-  async function fillForm() {
-    console.log('[DPD ProfiECU] fillForm() called');
-    const data = await fetchData();
-    if (!data) {
-      console.log('[DPD ProfiECU] No data after 3 attempts');
+  // ═══ Open rw-dropdown by label text, click option by text ═══
+  function openDropdownByLabel(labelText, optionText, callback) {
+    var label = Array.from(document.querySelectorAll('label')).find(
+      function (el) { return el.textContent.trim() === labelText; }
+    );
+    var container = label && label.closest('.rw-dropdown-list');
+    var input = container && container.querySelector('.rw-dropdown-list-input');
+    if (input) {
+      input.click();
+      console.log('[DPD] Opened dropdown:', labelText);
+    } else {
+      console.log('[DPD] Dropdown NOT found:', labelText);
+      if (callback) callback(false);
       return;
     }
-
-    console.log('[DPD ProfiECU] Filling form with:', data);
-
-    // Disable Google Autocomplete on address field
-    const addrField = find(['[name="findReceiverAddress"]', '#findReceiverAddress']);
-    if (addrField) {
-      addrField.setAttribute('autocomplete', 'off');
-    }
-
-    // ═══ STEP 0 (0ms): Name + hide sender address ═══
-    setTimeout(() => {
-      // Receiver name — try multiple selectors
-      const allInputs = document.querySelectorAll('input[type="text"]');
-      let nameField = find([
-        '[name="receiverName"]',
-        '#receiverName',
-        'input[placeholder*="jméno"]',
-        'input[placeholder*="Jméno"]',
-        'input[placeholder*="příjemce"]',
-        'input[placeholder*="Příjemce"]',
-      ]);
-      // Fallback: find by label text
-      if (!nameField) {
-        const labels = document.querySelectorAll('label');
-        for (const lbl of labels) {
-          if (lbl.textContent && (lbl.textContent.includes('Jméno') || lbl.textContent.includes('jméno') || lbl.textContent.includes('příjemce'))) {
-            const forId = lbl.getAttribute('for');
-            if (forId) nameField = document.getElementById(forId);
-            if (!nameField) nameField = lbl.closest('.form-group, .field, div')?.querySelector('input');
+    setTimeout(function () {
+      var options = document.querySelectorAll('.rw-list-option');
+      var found = false;
+      for (var i = 0; i < options.length; i++) {
+        if (options[i].textContent.trim() === optionText) {
+          options[i].click();
+          found = true;
+          console.log('[DPD] Selected:', optionText);
+          break;
+        }
+      }
+      if (!found) {
+        // Partial match fallback
+        for (var j = 0; j < options.length; j++) {
+          if (options[j].textContent.includes(optionText)) {
+            options[j].click();
+            found = true;
+            console.log('[DPD] Selected (partial):', options[j].textContent.trim());
             break;
           }
         }
       }
-      if (nameField) {
-        setVal(nameField, data.name);
-        console.log('[DPD ProfiECU] Step 0: name set to', data.name);
-      } else {
-        console.log('[DPD ProfiECU] Step 0: name field NOT found, tried', allInputs.length, 'inputs');
+      if (!found) {
+        console.log('[DPD] Option NOT found:', optionText, 'in', options.length, 'options');
       }
+      if (callback) callback(found);
+    }, 500);
+  }
 
-      // Check "hide sender address" checkbox
-      const hideAddrCheckbox = find([
-        '[name="useMarkedAddress"]',
-        '#useMarkedAddress',
-        'input[type="checkbox"][id*="mask"]',
-        'input[type="checkbox"][id*="marked"]',
-      ]);
-      if (hideAddrCheckbox && !hideAddrCheckbox.checked) {
-        clickEl(hideAddrCheckbox);
+  // ═══ Wait for element to appear in DOM ═══
+  function waitFor(selector, timeout, cb) {
+    var start = Date.now();
+    var check = function () {
+      var el = document.querySelector(selector);
+      if (el) return cb(el);
+      if (Date.now() - start > timeout) {
+        console.log('[DPD] waitFor timeout:', selector);
+        return;
       }
-      console.log('[DPD ProfiECU] Step 0: hide address checkbox done');
+      setTimeout(check, 300);
+    };
+    check();
+  }
 
-      // Expand "Kontaktní údaje" section
-      const rozbalit = Array.from(document.querySelectorAll('button, a, span')).find(
-        el => el.textContent.trim().includes('Rozbalit')
-      );
-      if (rozbalit) {
-        rozbalit.click();
-        console.log('[DPD ProfiECU] Step 0: clicked "Rozbalit..."');
-      }
+  // ═══ Fill form with data ═══
+  function fillForm(data) {
+    console.log('[DPD] fillForm() — MAIN world, data:', data);
 
+    // Disable Google Autocomplete
+    var addrField = document.querySelector('[name="findReceiverAddress"]');
+    if (addrField) addrField.setAttribute('autocomplete', 'off');
 
+    // ═══ STEP 0 (0ms): Name + hide sender address + expand contacts ═══
+    var nameField = document.querySelector('[name="receiverName"]');
+    if (nameField) {
+      setNativeValue(nameField, data.name);
+      console.log('[DPD] Step 0: name =', data.name);
+    }
 
-    }, 0);
+    var hideCheckbox = document.querySelector('[name="useMarkedAddress"]');
+    if (hideCheckbox && !hideCheckbox.checked) {
+      hideCheckbox.click();
+      console.log('[DPD] Step 0: hide address checked');
+    }
 
-    // ═══ STEP 1 (600ms): Open "Maskovací jméno" rw-dropdown, select first option ═══
-    setTimeout(() => {
-      const maskDropdown = Array.from(document.querySelectorAll('label')).find(
-        el => el.textContent.trim() === 'Maskovací jméno'
-      )?.closest('.rw-dropdown-list')?.querySelector('.rw-dropdown-list-input');
+    // Expand contact details
+    var rozbalit = Array.from(document.querySelectorAll('button, a, span')).find(
+      function (el) { return el.textContent.trim().includes('Rozbalit'); }
+    );
+    if (rozbalit) {
+      rozbalit.click();
+      console.log('[DPD] Step 0: expanded contacts');
+    }
 
-      if (maskDropdown) {
-        maskDropdown.click();
-        console.log('[DPD ProfiECU] Step 1a: Maskovací jméno dropdown clicked');
-      } else {
-        console.log('[DPD ProfiECU] Step 1a: Maskovací jméno dropdown NOT found');
-      }
-
-      // Wait 500ms for dropdown list to render, then select first option
-      setTimeout(() => {
-        const options = document.querySelectorAll('.rw-list-option');
+    // ═══ STEP 1 (600ms): Maskovací jméno dropdown → first option ═══
+    setTimeout(function () {
+      openDropdownByLabel('Maskovací jméno', '', function () {
+        // Select first option regardless of text
+        var options = document.querySelectorAll('.rw-list-option');
         if (options.length > 0) {
           options[0].click();
-          console.log('[DPD ProfiECU] Step 1b: selected first mask option:', options[0].textContent.trim());
-        } else {
-          console.log('[DPD ProfiECU] Step 1b: no rw-list-option found');
+          console.log('[DPD] Step 1: mask =', options[0].textContent.trim());
         }
-      }, 500);
+      });
     }, 600);
 
-    // ═══ STEP 2 (2000ms): ZIP code (triggers service loading) ═══
-    setTimeout(() => {
-      const zipField = find([
-        '[name="zipCode"]',
-        'input[placeholder*="PSČ"]',
-        'input[placeholder*="PSC"]',
-        '#zipCode',
-      ]);
-      setVal(zipField, data.zip);
-      console.log('[DPD ProfiECU] Step 2: ZIP =', data.zip);
+    // ═══ STEP 2 (2000ms): ZIP code ═══
+    setTimeout(function () {
+      var zipField = document.querySelector('[name="zipCode"]');
+      setNativeValue(zipField, data.zip);
+      console.log('[DPD] Step 2: zip =', data.zip);
     }, 2000);
 
     // ═══ STEP 3 (3500ms): City + Street + Phone + Email ═══
-    setTimeout(() => {
-      const cityField = find([
-        '[name="cityName"]',
-        'input[placeholder*="Město"]',
-        'input[placeholder*="město"]',
-        '#cityName',
-      ]);
-      setVal(cityField, data.city);
+    setTimeout(function () {
+      setNativeValue(document.querySelector('[name="cityName"]'), data.city);
+      setNativeValue(document.querySelector('[name="streetName"]'), data.street);
+      setNativeValue(document.querySelector('[name="mobileNumber"]'), data.phone);
+      console.log('[DPD] Step 3: city/street/phone done');
 
-      const streetField = find([
-        '[name="streetName"]',
-        'input[placeholder*="Ulice"]',
-        'input[placeholder*="ulice"]',
-        '#streetName',
-      ]);
-      setVal(streetField, data.street);
-
-      const phoneField = find([
-        '[name="mobileNumber"]',
-        'input[placeholder*="Telefon"]',
-        'input[placeholder*="telefon"]',
-        'input[type="tel"]',
-        '#mobileNumber',
-      ]);
-      setVal(phoneField, data.phone);
-
-      console.log('[DPD ProfiECU] Step 3: city=' + (cityField ? 'OK' : 'MISS') +
-        ' street=' + (streetField ? 'OK' : 'MISS') +
-        ' phone=' + (phoneField ? 'OK' : 'MISS'));
+      // Email — receiver field
+      var emailField = document.querySelector('[name="email"][data-testid="receiver-email"]');
+      if (emailField && data.email) {
+        emailField.focus();
+        emailField.select();
+        document.execCommand('insertText', false, data.email);
+        console.log('[DPD] Step 3: email =', data.email);
+      } else {
+        console.log('[DPD] Step 3: email field not ready, will retry');
+        // Retry after 1s
+        setTimeout(function () {
+          var el = document.querySelector('[name="email"][data-testid="receiver-email"]');
+          if (el && data.email) {
+            el.focus();
+            el.select();
+            document.execCommand('insertText', false, data.email);
+            console.log('[DPD] Step 3b: email =', data.email);
+          }
+        }, 1000);
+      }
     }, 3500);
 
-    // ═══ STEP 4 (6000ms): Select DPD Private via rw-dropdown-list ═══
-    setTimeout(() => {
-      // 1. Open the rw-dropdown by clicking its input
-      const hiddenInput = document.querySelector('[name="product.mainProductSelected"]');
-      const dropdownContainer = hiddenInput && hiddenInput.closest('.rw-dropdown-list');
-      const dropdownInput = dropdownContainer && dropdownContainer.querySelector('.rw-dropdown-list-input');
-      if (dropdownInput) {
-        dropdownInput.click();
-        console.log('[DPD ProfiECU] Step 4a: opened rw-dropdown');
-      } else {
-        console.log('[DPD ProfiECU] Step 4a: rw-dropdown-list-input NOT found');
-      }
-
-      // 2. Wait 500ms for dropdown list to render, then click DPD Private
-      setTimeout(() => {
-        let found = false;
-        const options = document.querySelectorAll('.rw-list-option');
-        for (const opt of options) {
-          if (opt.textContent && opt.textContent.trim() === 'DPD Private') {
-            opt.click();
-            found = true;
-            console.log('[DPD ProfiECU] Step 4b: DPD Private selected');
-            break;
+    // ═══ STEP 4 (6000ms): DPD Private ═══
+    setTimeout(function () {
+      openDropdownByLabel('Hlavní produkt', 'DPD Private', function (found) {
+        if (!found) {
+          // Fallback: try hidden input approach
+          var hiddenInput = document.querySelector('[name="product.mainProductSelected"]');
+          var container = hiddenInput && hiddenInput.closest('.rw-dropdown-list');
+          var input = container && container.querySelector('.rw-dropdown-list-input');
+          if (input) {
+            input.click();
+            setTimeout(function () {
+              var opts = document.querySelectorAll('.rw-list-option');
+              for (var i = 0; i < opts.length; i++) {
+                if (opts[i].textContent.includes('Private')) {
+                  opts[i].click();
+                  console.log('[DPD] Step 4 fallback: DPD Private selected');
+                  break;
+                }
+              }
+            }, 500);
           }
         }
-        if (!found) {
-          // Fallback: partial match
-          for (const opt of options) {
-            if (opt.textContent && opt.textContent.includes('Private')) {
-              opt.click();
-              found = true;
-              console.log('[DPD ProfiECU] Step 4b: DPD Private selected (partial match)');
-              break;
-            }
-          }
-        }
-        if (!found) {
-          console.log('[DPD ProfiECU] Step 4b: DPD Private NOT found in', options.length, 'options');
-        }
-      }, 500);
+      });
     }, 6000);
 
-    // ═══ STEP 5 (8000ms): Open "Doplňkové služby" dropdown, then click "Dobírka" ═══
-    setTimeout(() => {
-      // Check if already selected
-      const alreadySelected = document.querySelector('#shipment-selected-additional');
+    // ═══ STEP 5 (8000ms): Doplňkové služby → Dobírka ═══
+    setTimeout(function () {
+      var alreadySelected = document.querySelector('#shipment-selected-additional');
       if (alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka')) {
-        console.log('[DPD ProfiECU] Step 5: COD already selected, skipping');
+        console.log('[DPD] Step 5: Dobírka already selected');
         return;
       }
-
-      // 1. Find and click "Doplňkové služby" dropdown input
-      const doplnkoveDropdown = Array.from(document.querySelectorAll('label')).find(
-        el => el.textContent.trim() === 'Doplňkové služby'
-      )?.closest('.rw-dropdown-list')?.querySelector('.rw-dropdown-list-input');
-
-      if (doplnkoveDropdown) {
-        doplnkoveDropdown.click();
-        console.log('[DPD ProfiECU] Step 5a: Doplňkové služby clicked');
-      } else {
-        console.log('[DPD ProfiECU] Step 5a: Doplňkové služby dropdown NOT found');
-      }
-
-      // 2. Wait 500ms for dropdown list to render, then click "Dobírka"
-      setTimeout(() => {
-        const options = document.querySelectorAll('.rw-list-option');
-        const dobirka = Array.from(options).find(el => el.textContent.trim() === 'Dobírka');
-        if (dobirka) {
-          dobirka.click();
-          console.log('[DPD ProfiECU] Step 5b: Dobírka selected');
-        } else {
-          // Log all options for debugging
-          console.log('[DPD ProfiECU] Step 5b: Dobírka NOT found in ' + options.length + ' options');
-          for (const opt of options) {
-            console.log('[DPD ProfiECU] Step 5b: option: "' + opt.textContent.trim() + '"');
-          }
-        }
-      }, 500);
+      openDropdownByLabel('Doplňkové služby', 'Dobírka');
     }, 8000);
 
-    // ═══ STEP 6: Fill COD amount (waitForElement — waits for amount field after Dobírka) ═══
+    // ═══ STEP 6 (10000ms): COD amount ═══
     if (data.amount) {
-      waitForElement('#amount-1, [name="codAmount"], [name="cod.amount"], [name="cashOnDeliveryAmount"]', 15000)
-        .then((amountField) => {
-          amountField.removeAttribute('disabled');
-          amountField.removeAttribute('readonly');
-          setVal(amountField, data.amount);
-          console.log('[DPD ProfiECU] Step 6: COD amount set to', data.amount);
-          console.log('[DPD ProfiECU] Autofill complete');
-        })
-        .catch((err) => {
-          console.log('[DPD ProfiECU] Step 6 Error:', err);
-          console.log('[DPD ProfiECU] Autofill complete (without amount)');
-        });
-    } else {
-      console.log('[DPD ProfiECU] Autofill complete (no amount)');
+      waitFor('#amount-1', 15000, function (amountField) {
+        amountField.removeAttribute('disabled');
+        amountField.removeAttribute('readonly');
+        setNativeValue(amountField, data.amount);
+        console.log('[DPD] Step 6: amount =', data.amount);
+      });
     }
 
-    // ═══ EMAIL (3500ms): Fill receiver email via injected script (execCommand needs page context) ═══
-    setTimeout(() => {
-      if (data.email) {
-        const script = document.createElement('script');
-        script.textContent = '(function(){' +
-          'var el=document.querySelector("[name=\\"email\\"][data-testid=\\"receiver-email\\"]");' +
-          'if(el){el.focus();el.select();document.execCommand("insertText",false,"' + data.email.replace(/"/g, '\\"') + '");}' +
-          '})();';
-        document.head.appendChild(script);
-        script.remove();
-        console.log('[DPD ProfiECU] email injected via script tag:', data.email);
-      }
-    }, 3500);
+    console.log('[DPD] All steps scheduled');
   }
 
-  // Wait for page to be ready, then fill
-  if (document.readyState === 'complete') {
-    setTimeout(fillForm, 1500);
-  } else {
-    window.addEventListener('load', () => setTimeout(fillForm, 1500));
-  }
+  // ═══ Listen for data from bridge.js (ISOLATED world) ═══
+  window.addEventListener('message', function (event) {
+    if (event.data && event.data.type === 'DPD_PROFIECU_DATA') {
+      console.log('[DPD] Received data from bridge');
+      fillForm(event.data.payload);
+    }
+  });
+
+  console.log('[DPD] Content script loaded (MAIN world), waiting for bridge data...');
 })();

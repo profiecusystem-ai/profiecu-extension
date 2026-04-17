@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DPD ProfiECU",
-  "version": "1.1",
+  "version": "2.0",
   "description": "Automaticke vyplneni DPD formulare z ProfiECU",
   "permissions": ["activeTab"],
   "host_permissions": ["https://shipping.dpdgroup.com/*", "https://profiecu.vercel.app/*"],
@@ -9,8 +9,18 @@
     "default_popup": "popup.html",
     "default_icon": "icon.png"
   },
-  "content_scripts": [{
-    "matches": ["https://shipping.dpdgroup.com/*"],
-    "js": ["content.js"]
-  }]
+  "content_scripts": [
+    {
+      "matches": ["https://shipping.dpdgroup.com/*"],
+      "js": ["bridge.js"],
+      "world": "ISOLATED",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://shipping.dpdgroup.com/*"],
+      "js": ["content.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    }
+  ]
 }
