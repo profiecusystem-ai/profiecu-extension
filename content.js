@@ -330,18 +330,18 @@
       console.log('[DPD ProfiECU] Autofill complete (no amount)');
     }
 
-    // ═══ STEP 7 (11000ms): Fill receiver email — last step after everything loaded ═══
+    // ═══ EMAIL (500ms): Fill receiver email early ═══
     setTimeout(() => {
       const ef = document.querySelectorAll('[name="email"]');
       if (ef[1] && data.email) {
         ef[1].focus();
         document.execCommand('selectAll');
         document.execCommand('insertText', false, data.email);
-        console.log('[DPD ProfiECU] Step 7: email set:', data.email);
+        console.log('[DPD ProfiECU] email set at 500ms:', data.email);
       } else {
-        console.log('[DPD ProfiECU] Step 7: email MISS — fields=' + ef.length);
+        console.log('[DPD ProfiECU] email MISS at 500ms — fields=' + ef.length);
       }
-    }, 11000);
+    }, 500);
   }
 
   // Wait for page to be ready, then fill
