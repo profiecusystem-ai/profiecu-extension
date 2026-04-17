@@ -105,10 +105,16 @@
     if (addrField) addrField.setAttribute('autocomplete', 'off');
 
     // ═══ STEP 0 (0ms): Name + hide sender address + expand contacts ═══
-    var nameField = document.querySelector('[name="receiverName"]');
+    var nameField = document.querySelector('[name="name"]');
     if (nameField) {
       setNativeValue(nameField, data.name);
       console.log('[DPD] Step 0: name =', data.name);
+    }
+
+    var hideCheckbox = document.querySelector('[name="useMarkedAddress"]');
+    if (hideCheckbox && !hideCheckbox.checked) {
+      hideCheckbox.click();
+      console.log('[DPD] Step 0: hide address checked');
     }
 
     // Expand contact details
@@ -120,40 +126,20 @@
       console.log('[DPD] Step 0: expanded contacts');
     }
 
-    // ═══ STEP 1 (0ms): Check hide address → wait for mask dropdown → select first option ═══
+    // ═══ STEP 1 (600ms): Maskovací adresa dropdown → first option ═══
     setTimeout(function () {
-      // 1. Check "hide sender address" checkbox
-      var cb = document.querySelector('[name="useMarkedAddress"]');
-      if (cb && !cb.checked) {
-        cb.click();
-        console.log('[DPD] Step 1: hide address checked');
+      var f = document.querySelector('[name="maskAddressName"]');
+      if (f) {
+        f.closest('.rw-dropdown-list').querySelector('.rw-dropdown-list-input').click();
+        setTimeout(function () {
+          var o = document.querySelector('.rw-list-option');
+          if (o) o.click();
+          console.log('[DPD] Step 1: mask address selected');
+        }, 500);
+      } else {
+        console.log('[DPD] Step 1: maskAddressName NULL at 600ms');
       }
-
-      // 2. Poll for maskAddressName field to appear
-      var interval = setInterval(function () {
-        var f = document.querySelector('[name="maskAddressName"]');
-        if (f) {
-          clearInterval(interval);
-          // 3. Open dropdown and select first option
-          var dropdown = f.closest('.rw-dropdown-list');
-          var input = dropdown && dropdown.querySelector('.rw-dropdown-list-input');
-          if (input) {
-            input.click();
-            console.log('[DPD] Step 1: mask dropdown opened');
-          }
-          setTimeout(function () {
-            var o = document.querySelector('.rw-list-option');
-            if (o) {
-              o.click();
-              console.log('[DPD] Step 1: mask =', o.textContent.trim());
-            }
-          }, 500);
-        }
-      }, 200);
-
-      // Timeout after 5s
-      setTimeout(function () { clearInterval(interval); }, 5000);
-    }, 0);
+    }, 600);
 
     // ═══ STEP 2 (2000ms): ZIP code ═══
     setTimeout(function () {
