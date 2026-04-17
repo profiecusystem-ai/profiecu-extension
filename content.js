@@ -44,27 +44,27 @@
     return null;
   }
 
-  // Read data from chrome.storage.local (shared across origins)
-  function getDataFromStorage() {
-    return new Promise((resolve) => {
-      console.log('[DPD ProfiECU] Reading chrome.storage.local...');
-      if (chrome?.storage?.local) {
-        chrome.storage.local.get('dpd_autofill', (result) => {
-          console.log('[DPD ProfiECU] Storage result:', result);
-          resolve(result.dpd_autofill || null);
-        });
-      } else {
-        console.log('[DPD ProfiECU] chrome.storage.local NOT available');
-        resolve(null);
-      }
-    });
+  // Fetch data from ProfiECU API
+  const API_URL = 'https://profiecu.vercel.app/api/dpd-data';
+
+  async function fetchData() {
+    console.log('[DPD ProfiECU] Fetching from', API_URL);
+    try {
+      const res = await fetch(API_URL);
+      const data = await res.json();
+      console.log('[DPD ProfiECU] API response:', data);
+      return data && data.name ? data : null;
+    } catch (e) {
+      console.warn('[DPD ProfiECU] Fetch error:', e);
+      return null;
+    }
   }
 
   async function fillForm() {
     console.log('[DPD ProfiECU] fillForm() called');
-    const data = await getDataFromStorage();
+    const data = await fetchData();
     if (!data) {
-      console.log('[DPD ProfiECU] No autofill data found in storage');
+      console.log('[DPD ProfiECU] No autofill data from API');
       return;
     }
 
@@ -228,12 +228,8 @@
       }
     }, 4800);
 
-    // Clean up stored data after filling
     setTimeout(() => {
-      if (chrome?.storage?.local) {
-        chrome.storage.local.remove('dpd_autofill');
-      }
-      console.log('[DPD ProfiECU] Done, autofill data cleaned up');
+      console.log('[DPD ProfiECU] Autofill complete');
     }, 6000);
   }
 
