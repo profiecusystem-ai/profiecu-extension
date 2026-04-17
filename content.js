@@ -253,12 +253,16 @@
           }
         }
       }
-      setVal(emailField, data.email);
+      console.log('[DPD ProfiECU] Step 3: data.email="' + data.email + '", emailField=' + (emailField ? emailField.tagName + '[name=' + emailField.name + ', type=' + emailField.type + ']' : 'NULL'));
+      if (emailField && data.email) {
+        setVal(emailField, data.email);
+        console.log('[DPD ProfiECU] Step 3: email field value after setVal="' + emailField.value + '"');
+      }
 
       console.log('[DPD ProfiECU] Step 3: city=' + (cityField ? 'OK' : 'MISS') +
         ' street=' + (streetField ? 'OK' : 'MISS') +
         ' phone=' + (phoneField ? 'OK' : 'MISS') +
-        ' email=' + (emailField ? (emailField.name || emailField.id || 'found') : 'MISS'));
+        ' email=' + (emailField ? 'OK' : 'MISS'));
     }, 3500);
 
     // ═══ STEP 4 (6000ms): Select DPD Private via rw-dropdown-list ═══
