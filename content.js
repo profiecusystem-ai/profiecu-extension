@@ -161,34 +161,29 @@
 
     }, 0);
 
-    // ═══ STEP 1 (600ms): Click mask address field to open dropdown ═══
+    // ═══ STEP 1 (600ms): Open "Maskovací jméno" rw-dropdown, select first option ═══
     setTimeout(() => {
-      const maskField = find([
-        '[name="maskAddressName"]',
-        '#maskAddressName',
-        'input[id*="mask"]',
-        'select[id*="mask"]',
-      ]);
-      if (maskField) {
-        clickEl(maskField);
-        maskField.focus && maskField.focus();
-        console.log('[DPD ProfiECU] Step 1: clicked mask address field');
+      const maskDropdown = Array.from(document.querySelectorAll('label')).find(
+        el => el.textContent.trim() === 'Maskovací jméno'
+      )?.closest('.rw-dropdown-list')?.querySelector('.rw-dropdown-list-input');
+
+      if (maskDropdown) {
+        maskDropdown.click();
+        console.log('[DPD ProfiECU] Step 1a: Maskovací jméno dropdown clicked');
+      } else {
+        console.log('[DPD ProfiECU] Step 1a: Maskovací jméno dropdown NOT found');
       }
-      // Wait 600ms for dropdown to appear, then select first option
+
+      // Wait 500ms for dropdown list to render, then select first option
       setTimeout(() => {
-        const firstOption = document.querySelector(
-          '.k-list-container li:first-child, ' +
-          '.k-popup li:first-child, ' +
-          '[role="option"]:first-child, ' +
-          '.k-list li:first-child'
-        );
-        if (firstOption) {
-          clickEl(firstOption);
-          console.log('[DPD ProfiECU] Step 1b: selected first mask option:', firstOption.textContent);
+        const options = document.querySelectorAll('.rw-list-option');
+        if (options.length > 0) {
+          options[0].click();
+          console.log('[DPD ProfiECU] Step 1b: selected first mask option:', options[0].textContent.trim());
         } else {
-          console.log('[DPD ProfiECU] Step 1b: no dropdown options found');
+          console.log('[DPD ProfiECU] Step 1b: no rw-list-option found');
         }
-      }, 600);
+      }, 500);
     }, 600);
 
     // ═══ STEP 2 (2000ms): ZIP code (triggers service loading) ═══
