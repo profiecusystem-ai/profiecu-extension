@@ -61,6 +61,24 @@
     return new Promise(function (r) { setTimeout(r, ms); });
   }
 
+  // ═══ Wait for element via MutationObserver ═══
+  function waitForElObserver(selector, timeout) {
+    timeout = timeout || 5000;
+    return new Promise(function (resolve, reject) {
+      var existing = document.querySelector(selector);
+      if (existing) return resolve(existing);
+      var obs = new MutationObserver(function () {
+        var el = document.querySelector(selector);
+        if (el) { obs.disconnect(); resolve(el); }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(function () {
+        obs.disconnect();
+        reject(new Error('Observer timeout: ' + selector));
+      }, timeout);
+    });
+  }
+
   // ═══ Main async run ═══
   async function run(data) {
     console.log('[DPD] run() start, data:', data);
@@ -97,15 +115,36 @@
     // Step 1 — maskovací adresa
     var maskField = await waitForEl('[name="maskAddressName"]', 10000);
     console.log('[DPD] maskAddressName found');
-    var maskDropdownInput = maskField.closest('.rw-dropdown-list')
-      .querySelector('.rw-dropdown-list-input');
-    reactDropdownClick(maskDropdownInput);
-    console.log('[DPD] mask dropdown click dispatched');
-    await delay(500);
-    maskDropdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
-    await delay(200);
-    maskDropdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
-    console.log('[DPD] mask selected via keyboard');
+    var maskDropdown = maskField.closest('.rw-dropdown-list');
+    var maskDropdownInput = maskDropdown.querySelector('.rw-dropdown-list-input');
+
+    // Open via full pointer event sequence
+    maskDropdownInput.focus();
+    maskDropdownInput.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+    maskDropdownInput.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    maskDropdownInput.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
+    maskDropdownInput.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+    maskDropdownInput.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+    console.log('[DPD] mask dropdown pointer events dispatched');
+
+    // Wait for auto-select — DPD auto-selects first option
+    try {
+      await waitForEl(function () {
+        return maskField.value && maskField.value.length > 0;
+      }, 2000);
+      console.log('[DPD] mask auto-selected:', maskField.value);
+    } catch (e) {
+      // Fallback — click option via MutationObserver
+      console.log('[DPD] auto-select failed, trying observer');
+      try {
+        var maskOption = await waitForElObserver('.rw-list-option', 3000);
+        maskOption.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        maskOption.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        console.log('[DPD] mask option clicked via observer');
+      } catch (e2) {
+        console.log('[DPD] mask observer fallback failed:', e2.message);
+      }
+    }
 
     // Step 2 — PSČ
     await delay(1000);
