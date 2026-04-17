@@ -109,26 +109,34 @@
       console.log('[DPD ProfiECU] Step 0: name + hide address');
     }, 0);
 
-    // ═══ STEP 1 (600ms): Open mask address dropdown + select first ═══
+    // ═══ STEP 1 (600ms): Click mask address field to open dropdown ═══
     setTimeout(() => {
-      const maskDropdown = find([
+      const maskField = find([
         '[name="maskAddressName"]',
         '#maskAddressName',
+        'input[id*="mask"]',
         'select[id*="mask"]',
       ]);
-      if (maskDropdown && maskDropdown.tagName === 'SELECT') {
-        if (maskDropdown.options.length > 1) {
-          maskDropdown.selectedIndex = 1;
-          maskDropdown.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      } else if (maskDropdown) {
-        clickEl(maskDropdown);
-        setTimeout(() => {
-          const firstOption = maskDropdown.closest('.dropdown, .select')?.querySelector('li, option, [role="option"]');
-          if (firstOption) clickEl(firstOption);
-        }, 200);
+      if (maskField) {
+        clickEl(maskField);
+        maskField.focus && maskField.focus();
+        console.log('[DPD ProfiECU] Step 1: clicked mask address field');
       }
-      console.log('[DPD ProfiECU] Step 1: mask address');
+      // Wait 600ms for dropdown to appear, then select first option
+      setTimeout(() => {
+        const firstOption = document.querySelector(
+          '.k-list-container li:first-child, ' +
+          '.k-popup li:first-child, ' +
+          '[role="option"]:first-child, ' +
+          '.k-list li:first-child'
+        );
+        if (firstOption) {
+          clickEl(firstOption);
+          console.log('[DPD ProfiECU] Step 1b: selected first mask option:', firstOption.textContent);
+        } else {
+          console.log('[DPD ProfiECU] Step 1b: no dropdown options found');
+        }
+      }, 600);
     }, 600);
 
     // ═══ STEP 2 (1000ms): ZIP code (triggers service loading) ═══
