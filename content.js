@@ -18,209 +18,153 @@
     el.dispatchEvent(new Event('blur', { bubbles: true }));
   }
 
-  // ═══ Open rw-dropdown by label text, click option by text ═══
-  function openDropdownByLabel(labelText) {
-    var label = Array.from(document.querySelectorAll('label')).find(
-      function (l) { return l.textContent.trim().includes(labelText); }
-    );
-    if (!label) {
-      console.warn('[DPD] Label not found:', labelText);
-      return null;
-    }
-    var dropdown = null;
-    var forId = label.getAttribute('for');
-    if (forId) {
-      var target = document.querySelector('[name="' + forId + '"], #' + CSS.escape(forId));
-      dropdown = target ? target.closest('.rw-dropdown-list') : null;
-    }
-    if (!dropdown) {
-      var parent = label.parentElement;
-      while (parent && !dropdown) {
-        dropdown = parent.querySelector('.rw-dropdown-list');
-        parent = parent.parentElement;
-      }
-    }
-    if (!dropdown) {
-      console.warn('[DPD] Dropdown not found for:', labelText);
-      return null;
-    }
-    var input = dropdown.querySelector('.rw-dropdown-list-input');
-    if (!input) return null;
-    input.click();
-    console.log('[DPD] Dropdown opened:', labelText);
-    return input;
+  // ═══ React checkbox click ═══
+  function reactCheckboxClick(el) {
+    var setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype, 'checked'
+    ).set;
+    setter.call(el, !el.checked);
+    el.dispatchEvent(new Event('click', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  // ═══ Click option in open dropdown by text ═══
-  function clickOption(optionText, callback) {
-    setTimeout(function () {
-      var options = document.querySelectorAll('.rw-list-option');
-      var found = false;
-      for (var i = 0; i < options.length; i++) {
-        if (options[i].textContent.trim() === optionText) {
-          options[i].click();
-          found = true;
-          console.log('[DPD] Selected:', optionText);
-          break;
+  // ═══ Wait for element (Promise-based) ═══
+  function waitForEl(predicate, timeout, interval) {
+    timeout = timeout || 5000;
+    interval = interval || 100;
+    return new Promise(function (resolve, reject) {
+      var start = Date.now();
+      var check = function () {
+        var result = typeof predicate === 'string'
+          ? document.querySelector(predicate)
+          : predicate();
+        if (result) return resolve(result);
+        if (Date.now() - start >= timeout) {
+          return reject(new Error('waitForEl timeout: ' + predicate));
         }
-      }
-      if (!found) {
-        for (var j = 0; j < options.length; j++) {
-          if (options[j].textContent.includes(optionText)) {
-            options[j].click();
-            found = true;
-            console.log('[DPD] Selected (partial):', options[j].textContent.trim());
-            break;
-          }
-        }
-      }
-      if (!found) {
-        console.log('[DPD] Option NOT found:', optionText, 'in', options.length, 'options');
-      }
-      if (callback) callback(found);
-    }, 500);
+        setTimeout(check, interval);
+      };
+      check();
+    });
   }
 
-  // ═══ Wait for element to appear in DOM ═══
-  function waitFor(selector, timeout, cb) {
-    var start = Date.now();
-    var check = function () {
-      var el = document.querySelector(selector);
-      if (el) return cb(el);
-      if (Date.now() - start > timeout) {
-        console.log('[DPD] waitFor timeout:', selector);
-        return;
-      }
-      setTimeout(check, 300);
-    };
-    check();
+  // ═══ Delay helper ═══
+  function delay(ms) {
+    return new Promise(function (r) { setTimeout(r, ms); });
   }
 
-  // ═══ Fill form with data ═══
-  function fillForm(data) {
-    console.log('[DPD] fillForm() — MAIN world, data:', data);
+  // ═══ Main async run ═══
+  async function run(data) {
+    console.log('[DPD] run() start, data:', data);
 
     // Disable Google Autocomplete
     var addrField = document.querySelector('[name="findReceiverAddress"]');
     if (addrField) addrField.setAttribute('autocomplete', 'off');
 
-    // ═══ STEP 0 (0ms): Name + hide sender address + expand contacts ═══
-    var nameField = document.querySelector('[name="name"]');
-    if (nameField) {
+    // Step 0 — jméno
+    var nameField = await waitForEl('[name="name"]', 10000);
+    setNativeValue(nameField, data.name);
+    await delay(200);
+    if (nameField.value !== data.name) {
       setNativeValue(nameField, data.name);
-      console.log('[DPD] Step 0: name =', data.name);
     }
+    console.log('[DPD] name set:', nameField.value);
 
-    var hideCheckbox = document.querySelector('[name="useMarkedAddress"]');
-    if (hideCheckbox && !hideCheckbox.checked) {
-      hideCheckbox.click();
-      console.log('[DPD] Step 0: hide address checked');
-    }
-
-    // Expand contact details
+    // Step 0 — expand contacts
     var rozbalit = Array.from(document.querySelectorAll('button, a, span')).find(
       function (el) { return el.textContent.trim().includes('Rozbalit'); }
     );
     if (rozbalit) {
       rozbalit.click();
-      console.log('[DPD] Step 0: expanded contacts');
+      console.log('[DPD] expanded contacts');
     }
 
-    // ═══ STEP 1 (600ms + polling): Maskovací adresa dropdown → first option ═══
-    setTimeout(function () {
-      var attempts = 0;
-      var maxAttempts = 20;
-      var interval = setInterval(function () {
-        attempts++;
-        var f = document.querySelector('[name="maskAddressName"]');
-        if (f) {
-          clearInterval(interval);
-          f.closest('.rw-dropdown-list').querySelector('.rw-dropdown-list-input').click();
-          setTimeout(function () {
-            var o = document.querySelector('.rw-list-option');
-            if (o) {
-              o.click();
-              console.log('[DPD] Step 1: mask address selected');
-            }
-          }, 500);
-        } else if (attempts >= maxAttempts) {
-          clearInterval(interval);
-          console.log('[DPD] Step 1: maskAddressName not found after', attempts, 'attempts');
+    // Step 0 — checkbox
+    var hideCheckbox = await waitForEl('[name="useMarkedAddress"]', 5000);
+    if (!hideCheckbox.checked) {
+      reactCheckboxClick(hideCheckbox);
+      console.log('[DPD] checkbox clicked');
+    }
+
+    // Step 1 — maskovací adresa
+    var maskField = await waitForEl('[name="maskAddressName"]', 10000);
+    console.log('[DPD] maskAddressName found');
+    var dropdownInput = maskField.closest('.rw-dropdown-list')
+      .querySelector('.rw-dropdown-list-input');
+    dropdownInput.click();
+    var option = await waitForEl('.rw-list-option', 3000);
+    option.click();
+    console.log('[DPD] mask option selected');
+
+    // Step 2 — PSČ
+    await delay(1000);
+    var zipField = await waitForEl('[name="zipCode"]', 5000);
+    setNativeValue(zipField, data.zip);
+    console.log('[DPD] zip set:', data.zip);
+
+    // Step 3 — město + ulice + telefon + email
+    await delay(1500);
+    setNativeValue(document.querySelector('[name="cityName"]'), data.city);
+    setNativeValue(document.querySelector('[name="streetName"]'), data.street);
+    setNativeValue(document.querySelector('[name="mobileNumber"]'), data.phone);
+    console.log('[DPD] city/street/phone set');
+
+    var emailField = document.querySelector('[name="email"][data-testid="receiver-email"]');
+    if (emailField && data.email) {
+      emailField.focus();
+      emailField.select();
+      document.execCommand('insertText', false, data.email);
+      console.log('[DPD] email set:', data.email);
+    }
+
+    // Step 4 — DPD Private
+    await delay(2500);
+    var mainDropdown = document.querySelector('[name="product.mainProductSelected"]');
+    if (mainDropdown) {
+      mainDropdown.closest('.rw-dropdown-list')
+        .querySelector('.rw-dropdown-list-input').click();
+      try {
+        var dpdPrivate = await waitForEl(function () {
+          return Array.from(document.querySelectorAll('.rw-list-option'))
+            .find(function (o) { return o.textContent.trim() === 'DPD Private'; });
+        }, 3000);
+        dpdPrivate.click();
+        console.log('[DPD] DPD Private selected');
+      } catch (e) {
+        console.log('[DPD] DPD Private not found:', e.message);
+      }
+    }
+
+    // Step 5 — Dobírka
+    await delay(1500);
+    var addDropdown = document.querySelector('[name="product.additionalProductSelected"]');
+    if (addDropdown) {
+      addDropdown.closest('.rw-dropdown-list')
+        .querySelector('.rw-dropdown-list-input').click();
+      try {
+        var dobirka = await waitForEl(function () {
+          return Array.from(document.querySelectorAll('.rw-list-option'))
+            .find(function (o) { return o.textContent.trim() === 'Dobírka'; });
+        }, 3000);
+        if (dobirka) {
+          dobirka.click();
+          console.log('[DPD] Dobírka selected');
         }
-      }, 150);
-    }, 600);
-
-    // ═══ STEP 2 (2000ms): ZIP code ═══
-    setTimeout(function () {
-      var zipField = document.querySelector('[name="zipCode"]');
-      setNativeValue(zipField, data.zip);
-      console.log('[DPD] Step 2: zip =', data.zip);
-    }, 2000);
-
-    // ═══ STEP 3 (3500ms): City + Street + Phone + Email ═══
-    setTimeout(function () {
-      setNativeValue(document.querySelector('[name="cityName"]'), data.city);
-      setNativeValue(document.querySelector('[name="streetName"]'), data.street);
-      setNativeValue(document.querySelector('[name="mobileNumber"]'), data.phone);
-      console.log('[DPD] Step 3: city/street/phone done');
-
-      // Email — receiver field
-      var emailField = document.querySelector('[name="email"][data-testid="receiver-email"]');
-      if (emailField && data.email) {
-        emailField.focus();
-        emailField.select();
-        document.execCommand('insertText', false, data.email);
-        console.log('[DPD] Step 3: email =', data.email);
-      } else {
-        console.log('[DPD] Step 3: email field not ready, will retry');
-        // Retry after 1s
-        setTimeout(function () {
-          var el = document.querySelector('[name="email"][data-testid="receiver-email"]');
-          if (el && data.email) {
-            el.focus();
-            el.select();
-            document.execCommand('insertText', false, data.email);
-            console.log('[DPD] Step 3b: email =', data.email);
-          }
-        }, 1000);
+      } catch (e) {
+        console.log('[DPD] Dobírka not found:', e.message);
       }
-    }, 3500);
-
-    // ═══ STEP 4 (6000ms): DPD Private ═══
-    setTimeout(function () {
-      openDropdownByLabel('Hlavní produkt');
-      clickOption('DPD Private');
-    }, 6000);
-
-    // ═══ STEP 5 (8000ms): Doplňkové služby → Dobírka ═══
-    setTimeout(function () {
-      var alreadySelected = document.querySelector('#shipment-selected-additional');
-      if (alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka')) {
-        console.log('[DPD] Step 5: Dobírka already selected');
-        return;
-      }
-      openDropdownByLabel('Doplňkové služby');
-      clickOption('Dobírka');
-    }, 8000);
-
-    // ═══ STEP 6 (10000ms): COD amount ═══
-    if (data.amount) {
-      waitFor('#amount-1', 15000, function (amountField) {
-        amountField.removeAttribute('disabled');
-        amountField.removeAttribute('readonly');
-        setNativeValue(amountField, data.amount);
-        console.log('[DPD] Step 6: amount =', data.amount);
-      });
     }
 
-    console.log('[DPD] All steps scheduled');
+    console.log('[DPD] All steps complete');
   }
 
   // ═══ Listen for data from bridge.js (ISOLATED world) ═══
   window.addEventListener('message', function (event) {
     if (event.data && event.data.type === 'DPD_PROFIECU_DATA') {
       console.log('[DPD] Received data from bridge');
-      fillForm(event.data.payload);
+      run(event.data.payload).catch(function (err) {
+        console.error('[DPD] run() error:', err);
+      });
     }
   });
 
