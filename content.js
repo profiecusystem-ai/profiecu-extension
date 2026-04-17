@@ -217,13 +217,27 @@
       ]);
       setVal(phoneField, data.phone);
 
-      const emailField = find([
+      let emailField = find([
+        '[name="receiverEmail"]',
+        '[name="receiver.email"]',
         '[name="email"]',
+        'input[type="email"]',
         'input[placeholder*="E-mail"]',
         'input[placeholder*="email"]',
-        'input[type="email"]',
         '#email',
       ]);
+      // Fallback: find input near label "E-mail"
+      if (!emailField) {
+        const labels = document.querySelectorAll('label');
+        for (const lbl of labels) {
+          if (lbl.textContent && lbl.textContent.trim() === 'E-mail') {
+            const forId = lbl.getAttribute('for');
+            if (forId) emailField = document.getElementById(forId);
+            if (!emailField) emailField = lbl.closest('.form-group, .field, div')?.querySelector('input');
+            break;
+          }
+        }
+      }
       setVal(emailField, data.email);
 
       console.log('[DPD ProfiECU] Step 3: city, street, phone, email');
@@ -271,7 +285,7 @@
       }, 500);
     }, 6000);
 
-    // ═══ STEP 5 (8000ms): Check COD (Dobírka) in additional services ═══
+    // ═══ STEP 5 (8000ms): Check COD (Dobírka) — click label directly ═══
     setTimeout(() => {
       const alreadySelected = document.querySelector('#shipment-selected-additional');
       if (alreadySelected && alreadySelected.textContent && alreadySelected.textContent.includes('Dobírka')) {
@@ -279,25 +293,15 @@
         return;
       }
 
-      let clicked = false;
-      const additionalServices = document.querySelector('#shipment-additional-services');
-      if (additionalServices) {
-        const labels = additionalServices.querySelectorAll('label');
-        for (const lbl of labels) {
-          if (lbl.textContent && lbl.textContent.includes('Dobírka') && !lbl.textContent.includes('Pojištění')) {
-            const checkbox = lbl.querySelector('input[type="checkbox"]') || lbl.previousElementSibling;
-            if (checkbox && checkbox.tagName === 'INPUT' && !checkbox.checked) {
-              clickEl(checkbox);
-              clicked = true;
-            } else {
-              clickEl(lbl);
-              clicked = true;
-            }
-            break;
-          }
-        }
+      const dobirkaLabel = Array.from(document.querySelectorAll('label')).find(
+        el => el.textContent.trim() === 'Dobírka'
+      );
+      if (dobirkaLabel) {
+        dobirkaLabel.click();
+        console.log('[DPD ProfiECU] Step 5: Dobírka clicked');
+      } else {
+        console.log('[DPD ProfiECU] Step 5: Dobírka NOT found');
       }
-      console.log('[DPD ProfiECU] Step 5: Dobírka', clicked ? 'checked' : 'NOT found');
     }, 8000);
 
     // ═══ STEP 6: Fill COD amount (waitForElement — waits for amount field after Dobírka) ═══
