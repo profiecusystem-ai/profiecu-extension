@@ -88,6 +88,21 @@
     return null;
   }
 
+  function fillEmail(email) {
+    var check = function() {
+      var el = document.querySelector('[name="email"][data-testid="receiver-email"]');
+      if (el && !el.disabled && el.offsetParent) {
+        el.focus();
+        el.select();
+        document.execCommand('insertText', false, email);
+        console.log('[DPD ProfiECU] email set:', email);
+      } else {
+        requestAnimationFrame(check);
+      }
+    };
+    check();
+  }
+
   async function fillForm() {
     console.log('[DPD ProfiECU] fillForm() called');
     const data = await fetchData();
@@ -154,6 +169,11 @@
       if (rozbalit) {
         rozbalit.click();
         console.log('[DPD ProfiECU] Step 0: clicked "Rozbalit..."');
+      }
+
+      // Start email polling (waits until receiver-email field is ready)
+      if (data.email) {
+        fillEmail(data.email);
       }
 
     }, 0);
@@ -330,18 +350,6 @@
       console.log('[DPD ProfiECU] Autofill complete (no amount)');
     }
 
-    // ═══ EMAIL (500ms): Fill receiver email early ═══
-    setTimeout(() => {
-      const ef = document.querySelectorAll('[name="email"]');
-      if (ef[1] && data.email) {
-        ef[1].focus();
-        document.execCommand('selectAll');
-        document.execCommand('insertText', false, data.email);
-        console.log('[DPD ProfiECU] email set at 500ms:', data.email);
-      } else {
-        console.log('[DPD ProfiECU] email MISS at 500ms — fields=' + ef.length);
-      }
-    }, 500);
   }
 
   // Wait for page to be ready, then fill
