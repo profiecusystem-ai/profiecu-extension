@@ -236,6 +236,40 @@
       }
     }
 
+    // Step 5b — zaškrtni Dobírku přes label click
+    await delay(500);
+    var labels = document.querySelectorAll('label');
+    var dobirkaLabel = Array.from(labels).find(function (l) {
+      return l.textContent.trim() === 'Dobírka';
+    });
+    if (dobirkaLabel) {
+      var labelRect = dobirkaLabel.getBoundingClientRect();
+      dobirkaLabel.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true,
+        clientX: labelRect.left + labelRect.width / 2,
+        clientY: labelRect.top + labelRect.height / 2
+      }));
+      dobirkaLabel.dispatchEvent(new MouseEvent('click', {
+        bubbles: true, cancelable: true,
+        clientX: labelRect.left + labelRect.width / 2,
+        clientY: labelRect.top + labelRect.height / 2
+      }));
+      console.log('[DPD] Dobírka checkbox clicked');
+    }
+
+    // Step 6 — částka dobírky
+    await delay(1000);
+    var amountField = document.querySelector('[name*="AMOUNT"][name*="additionProducts"]');
+    if (amountField && data.amount) {
+      amountField.focus();
+      amountField.select();
+      document.execCommand('selectAll');
+      document.execCommand('insertText', false, data.amount);
+      console.log('[DPD] amount set:', data.amount);
+    } else {
+      console.log('[DPD] amount field not found or no amount data');
+    }
+
     console.log('[DPD] All steps complete');
   }
 
