@@ -19,20 +19,40 @@
   }
 
   // ═══ Open rw-dropdown by label text, click option by text ═══
-  function openDropdownByLabel(labelText, optionText, callback) {
+  function openDropdownByLabel(labelText) {
     var label = Array.from(document.querySelectorAll('label')).find(
-      function (el) { return el.textContent.trim().includes(labelText); }
+      function (l) { return l.textContent.trim().includes(labelText); }
     );
-    var container = label && label.closest('.rw-dropdown-list');
-    var input = container && container.querySelector('.rw-dropdown-list-input');
-    if (input) {
-      input.click();
-      console.log('[DPD] Opened dropdown:', labelText);
-    } else {
-      console.log('[DPD] Dropdown NOT found:', labelText);
-      if (callback) callback(false);
-      return;
+    if (!label) {
+      console.warn('[DPD] Label not found:', labelText);
+      return null;
     }
+    var dropdown = null;
+    var forId = label.getAttribute('for');
+    if (forId) {
+      var target = document.querySelector('[name="' + forId + '"], #' + CSS.escape(forId));
+      dropdown = target ? target.closest('.rw-dropdown-list') : null;
+    }
+    if (!dropdown) {
+      var parent = label.parentElement;
+      while (parent && !dropdown) {
+        dropdown = parent.querySelector('.rw-dropdown-list');
+        parent = parent.parentElement;
+      }
+    }
+    if (!dropdown) {
+      console.warn('[DPD] Dropdown not found for:', labelText);
+      return null;
+    }
+    var input = dropdown.querySelector('.rw-dropdown-list-input');
+    if (!input) return null;
+    input.click();
+    console.log('[DPD] Dropdown opened:', labelText);
+    return input;
+  }
+
+  // ═══ Click option in open dropdown by text ═══
+  function clickOption(optionText, callback) {
     setTimeout(function () {
       var options = document.querySelectorAll('.rw-list-option');
       var found = false;
@@ -45,7 +65,6 @@
         }
       }
       if (!found) {
-        // Partial match fallback
         for (var j = 0; j < options.length; j++) {
           if (options[j].textContent.includes(optionText)) {
             options[j].click();
@@ -109,14 +128,15 @@
 
     // ═══ STEP 1 (600ms): Maskovací jméno dropdown → first option ═══
     setTimeout(function () {
-      openDropdownByLabel('Maskovací jméno', '', function () {
-        // Select first option regardless of text
+      openDropdownByLabel('Maskovací jméno');
+      // Select first option after 500ms
+      setTimeout(function () {
         var options = document.querySelectorAll('.rw-list-option');
         if (options.length > 0) {
           options[0].click();
           console.log('[DPD] Step 1: mask =', options[0].textContent.trim());
         }
-      });
+      }, 500);
     }, 600);
 
     // ═══ STEP 2 (2000ms): ZIP code ═══
@@ -157,27 +177,8 @@
 
     // ═══ STEP 4 (6000ms): DPD Private ═══
     setTimeout(function () {
-      openDropdownByLabel('Hlavní produkt', 'DPD Private', function (found) {
-        if (!found) {
-          // Fallback: try hidden input approach
-          var hiddenInput = document.querySelector('[name="product.mainProductSelected"]');
-          var container = hiddenInput && hiddenInput.closest('.rw-dropdown-list');
-          var input = container && container.querySelector('.rw-dropdown-list-input');
-          if (input) {
-            input.click();
-            setTimeout(function () {
-              var opts = document.querySelectorAll('.rw-list-option');
-              for (var i = 0; i < opts.length; i++) {
-                if (opts[i].textContent.includes('Private')) {
-                  opts[i].click();
-                  console.log('[DPD] Step 4 fallback: DPD Private selected');
-                  break;
-                }
-              }
-            }, 500);
-          }
-        }
-      });
+      openDropdownByLabel('Hlavní produkt');
+      clickOption('DPD Private');
     }, 6000);
 
     // ═══ STEP 5 (8000ms): Doplňkové služby → Dobírka ═══
@@ -187,7 +188,8 @@
         console.log('[DPD] Step 5: Dobírka already selected');
         return;
       }
-      openDropdownByLabel('Doplňkové služby', 'Dobírka');
+      openDropdownByLabel('Doplňkové služby');
+      clickOption('Dobírka');
     }, 8000);
 
     // ═══ STEP 6 (10000ms): COD amount ═══
