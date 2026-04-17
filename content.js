@@ -146,6 +146,24 @@
         clickEl(hideAddrCheckbox);
       }
       console.log('[DPD ProfiECU] Step 0: hide address checkbox done');
+
+      // Expand "Kontaktní údaje" section
+      const rozbalit = Array.from(document.querySelectorAll('button, a, span')).find(
+        el => el.textContent.trim() === 'Rozbalit...'
+      );
+      if (rozbalit) {
+        rozbalit.click();
+        console.log('[DPD ProfiECU] Step 0: clicked "Rozbalit..."');
+      }
+
+      // Fill email
+      const emailField = document.querySelector('[name="email"]');
+      if (emailField && data.email) {
+        setVal(emailField, data.email);
+        console.log('[DPD ProfiECU] Step 0: email set to', data.email);
+      } else {
+        console.log('[DPD ProfiECU] Step 0: email field not ready, will retry in Step 0b');
+      }
     }, 0);
 
     // ═══ STEP 1 (600ms): Click mask address field to open dropdown ═══
@@ -216,26 +234,6 @@
         '#mobileNumber',
       ]);
       setVal(phoneField, data.phone);
-
-      // Rozbal sekci Kontaktní údaje
-      const rozbalit = Array.from(document.querySelectorAll('button, a, span')).find(
-        el => el.textContent.trim() === 'Rozbalit...'
-      );
-      if (rozbalit) {
-        rozbalit.click();
-        console.log('[DPD ProfiECU] Step 3: clicked "Rozbalit..." to expand contact section');
-      }
-
-      // Wait 500ms for email field to appear after expanding
-      setTimeout(() => {
-        const emailField = document.querySelector('[name="email"]');
-        if (emailField && data.email) {
-          setVal(emailField, data.email);
-          console.log('[DPD ProfiECU] Step 3: email set to "' + data.email + '", value="' + emailField.value + '"');
-        } else {
-          console.log('[DPD ProfiECU] Step 3: email MISS — field=' + !!emailField + ', data.email="' + data.email + '"');
-        }
-      }, 500);
 
       console.log('[DPD ProfiECU] Step 3: city=' + (cityField ? 'OK' : 'MISS') +
         ' street=' + (streetField ? 'OK' : 'MISS') +
