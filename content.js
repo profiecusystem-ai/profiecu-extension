@@ -289,42 +289,42 @@
       } catch (e) {
         console.log('[DPD] Dobírka not found:', e.message);
       }
-    }
 
-    // Step 5b — zaškrtni Dobírku přes label click
-    try {
-      var dobirkaLabel = await waitForLabel('Dobírka', 10000);
-      console.log('[DPD] Dobírka label found');
+      // Zaškrtni Dobírka checkbox
+      await delay(1000);
+      try {
+        var dobirkaLabel = await waitForLabel('Dobírka', 10000);
+        console.log('[DPD] Dobírka label found for checkbox');
 
-      if (verifyChecked(dobirkaLabel)) {
-        console.log('[DPD] Dobírka already checked');
-      } else {
-        await realisticLabelClick(dobirkaLabel);
-        await delay(300);
-        if (!verifyChecked(dobirkaLabel)) {
-          console.log('[DPD] retry Dobírka click');
-          var forId = dobirkaLabel.getAttribute('for');
-          var cb = forId ? document.getElementById(forId) : null;
-          if (cb) await realisticLabelClick(cb);
+        if (verifyChecked(dobirkaLabel)) {
+          console.log('[DPD] Dobírka already checked');
+        } else {
+          await realisticLabelClick(dobirkaLabel);
           await delay(300);
+          if (!verifyChecked(dobirkaLabel)) {
+            var forId = dobirkaLabel.getAttribute('for');
+            var cb = forId ? document.getElementById(forId) : null;
+            if (cb) await realisticLabelClick(cb);
+            await delay(300);
+          }
+          console.log('[DPD] Dobírka checked:', verifyChecked(dobirkaLabel));
         }
-        console.log('[DPD] Dobírka checked:', verifyChecked(dobirkaLabel));
+      } catch (e) {
+        console.log('[DPD] Dobírka label not found:', e.message);
       }
-    } catch (e) {
-      console.log('[DPD] Dobírka label not found:', e.message);
-    }
 
-    // Step 6 — částka dobírky
-    await delay(1000);
-    var amountField = document.querySelector('[name*="AMOUNT"][name*="additionProducts"]');
-    if (amountField && data.amount) {
-      amountField.focus();
-      amountField.select();
-      document.execCommand('selectAll');
-      document.execCommand('insertText', false, data.amount);
-      console.log('[DPD] amount set:', data.amount);
-    } else {
-      console.log('[DPD] amount field not found or no amount data');
+      // Vyplň částku dobírky
+      await delay(1000);
+      var amountField = document.querySelector('[name*="AMOUNT"][name*="additionProducts"]');
+      if (amountField && data.amount) {
+        amountField.focus();
+        amountField.select();
+        document.execCommand('selectAll');
+        document.execCommand('insertText', false, data.amount);
+        console.log('[DPD] amount set:', data.amount);
+      } else {
+        console.log('[DPD] amount field not found or no amount data');
+      }
     }
 
     console.log('[DPD] All steps complete');
