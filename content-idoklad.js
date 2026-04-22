@@ -199,6 +199,29 @@
         } else {
           console.warn('[iDoklad] Step 2A: neither listItem nor auto-popup appeared within 6s');
         }
+
+        // Defensive check: iDoklad může popup "Nový kontakt" otevřít AŽ PO
+        // kliku na listItem nebo po prvním potvrzení. Pokud do 4s přijde popup
+        // s CompanyName inputem, znovu potvrdíme — jinak pokračujeme normálně.
+        try {
+          var lateModal = await waitForEl(function () {
+            return document.querySelector('input[name="CompanyName"]');
+          }, 4000);
+          if (lateModal) {
+            console.log('[iDoklad] Step 2A: late auto-popup detected, confirming');
+            await delay(500);
+            var lateConfirm = document.querySelector('[data-ui-id="csw-dialog-confirm"]');
+            if (lateConfirm) {
+              lateConfirm.click();
+              await delay(800);
+              console.log('[iDoklad] Step 2A: late popup confirmed');
+            } else {
+              console.warn('[iDoklad] Step 2A: late popup confirm button not found');
+            }
+          }
+        } catch (_) {
+          // late popup se neobjevil (timeout) — pokračuj na Step 3
+        }
       } catch (e) {
         console.error('[iDoklad] Step 2A failed:', e.message);
       }

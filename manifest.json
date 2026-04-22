@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DPD ProfiECU",
-  "version": "2.2",
+  "version": "2.3",
   "description": "Automaticke vyplneni DPD a iDoklad formulare z ProfiECU",
   "permissions": ["activeTab"],
   "host_permissions": ["https://shipping.dpdgroup.com/*", "https://app.idoklad.cz/*", "https://profiecu.vercel.app/*"],
