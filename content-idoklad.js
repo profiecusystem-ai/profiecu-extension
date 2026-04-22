@@ -125,7 +125,9 @@
   async function run(data) {
     console.log('[iDoklad] run() start, data:', data);
 
-    // Step 1 — wait for Kendo init, then open template dropdown & pick CAR ELE
+    // Step 1 — wait for Kendo init, open template dropdown, pick first real template
+    // (user has different profiles where the template is named differently, but
+    // there's always exactly one real template + the "Bez šablony" placeholder).
     await delay(500);
     try {
       var tmplDropdown = await waitForEl('[data-ui-id="csw-template"]', 5000);
@@ -133,15 +135,17 @@
       await trulyOpenDropdown(tmplDropdown);
 
       await waitForElObserver('.k-list-item', 3000);
-      var carEle = Array.from(document.querySelectorAll('.k-list-item'))
-        .find(function (el) { return el.textContent.trim() === 'CAR ELE'; });
+      var items = Array.from(document.querySelectorAll('.k-list-item'));
+      var firstReal = items.find(function (el) {
+        return el.textContent.trim() !== 'Bez šablony';
+      });
 
-      if (carEle) {
-        console.log('[iDoklad] Step 1b: clicking CAR ELE');
-        await trulyClickOption(carEle);
+      if (firstReal) {
+        console.log('[iDoklad] Step 1b: clicking first real template:', firstReal.textContent.trim());
+        await trulyClickOption(firstReal);
         await delay(800);
       } else {
-        console.warn('[iDoklad] CAR ELE option not found');
+        console.warn('[iDoklad] No real template option found (only "Bez šablony"?)');
       }
     } catch (e) {
       console.warn('[iDoklad] Step 1 failed:', e.message);
@@ -153,13 +157,48 @@
       try {
         var odb = await waitForEl('input[placeholder*="Vyhledat v adresáři"]', 5000);
         setNativeValue(odb, String(data.ico).trim());
-        await delay(1000); // ARES lookup
-        var navrh = await waitForEl(function () {
-          return document.querySelector('.k-list-item');
-        }, 4000);
-        await trulyClickOption(navrh);
-        await delay(800);
-        console.log('[iDoklad] Step 2A done');
+        await delay(150);
+
+        // Emulate Enter to trigger iDoklad's ARES lookup immediately
+        ['keydown', 'keypress', 'keyup'].forEach(function (type) {
+          odb.dispatchEvent(new KeyboardEvent(type, {
+            key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+            bubbles: true, cancelable: true
+          }));
+        });
+        console.log('[iDoklad] Step 2A: Enter dispatched, waiting for ARES response');
+
+        // After Enter, iDoklad may either:
+        //  A) show a .k-list-item suggestion (company already in address book)
+        //  B) auto-open the "Nový kontakt" popup with ARES-prefilled data
+        var detected = await Promise.race([
+          waitForEl(function () {
+            return document.querySelector('.k-list-item');
+          }, 6000).then(function (el) { return { type: 'listItem', el: el }; }),
+          waitForEl(function () {
+            return document.querySelector('input[name="CompanyName"]');
+          }, 6000).then(function (el) { return { type: 'autoPopup', el: el }; }),
+        ]).catch(function () { return null; });
+
+        if (detected && detected.type === 'listItem') {
+          console.log('[iDoklad] Step 2A: listItem suggestion appeared, clicking');
+          await trulyClickOption(detected.el);
+          await delay(800);
+          console.log('[iDoklad] Step 2A done (listItem)');
+        } else if (detected && detected.type === 'autoPopup') {
+          console.log('[iDoklad] Step 2A: auto-popup opened (ARES prefilled), confirming');
+          await delay(500);
+          var autoConfirm = document.querySelector('[data-ui-id="csw-dialog-confirm"]');
+          if (autoConfirm) {
+            autoConfirm.click();
+            await delay(800);
+            console.log('[iDoklad] Step 2A done (autoPopup confirmed)');
+          } else {
+            console.warn('[iDoklad] Step 2A: auto-popup dialog confirm button not found');
+          }
+        } else {
+          console.warn('[iDoklad] Step 2A: neither listItem nor auto-popup appeared within 6s');
+        }
       } catch (e) {
         console.error('[iDoklad] Step 2A failed:', e.message);
       }
