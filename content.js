@@ -83,14 +83,8 @@
     await delay(400);
   }
 
-  // ═══ Vyber option podle viditelného textu ═══
-  async function pickOption(input, optionText) {
-    var inputIdPrefix = input.id.replace('-input', '');
-    var optionSelectorPrefix = '[id^="' + inputIdPrefix + '-option-"]';
-    var option = await waitForEl(function () {
-      return Array.from(document.querySelectorAll(optionSelectorPrefix))
-        .find(function (o) { return (o.textContent || '').trim() === optionText; });
-    }, 5000);
+  // ═══ Klikni na option element (sdílená logika) ═══
+  function clickOptionElement(option) {
     option.scrollIntoView({ block: 'nearest' });
     var rect = option.getBoundingClientRect();
     var coords = {
@@ -106,6 +100,26 @@
     option.dispatchEvent(new MouseEvent('click', coords));
   }
 
+  // ═══ Vyber option podle viditelného textu ═══
+  async function pickOption(input, optionText) {
+    var inputIdPrefix = input.id.replace('-input', '');
+    var optionSelectorPrefix = '[id^="' + inputIdPrefix + '-option-"]';
+    var option = await waitForEl(function () {
+      return Array.from(document.querySelectorAll(optionSelectorPrefix))
+        .find(function (o) { return (o.textContent || '').trim() === optionText; });
+    }, 5000);
+    clickOptionElement(option);
+  }
+
+  // ═══ Vyber první (option-0) z react-select bez ohledu na text ═══
+  async function pickFirstOption(input) {
+    var inputIdPrefix = input.id.replace('-input', '');
+    var option = await waitForEl(function () {
+      return document.getElementById(inputIdPrefix + '-option-0');
+    }, 5000);
+    clickOptionElement(option);
+  }
+
   // ═══ "Ulice 123" → { street: "Ulice", houseNo: "123" } ═══
   function splitStreet(combined) {
     if (!combined) return { street: '', houseNo: '' };
@@ -116,16 +130,34 @@
 
   // ═══ Main run ═══
   async function run(data) {
-    console.log('[DPD] run() start (v2.5 for DPD 1.118.9+), data:', data);
+    console.log('[DPD] run() start (v2.6 for DPD 1.118.9+), data:', data);
 
     // Step 1 — jméno příjemce
     var nameField = await waitForEl('[name="receiver.name"]', 15000);
     setNativeValue(nameField, data.name || '');
     console.log('[DPD] name set:', nameField.value);
 
-    // Step 2 — disable Google autocomplete
+    // Step 1b — disable Google autocomplete na "Vyhledat adresu pomocí Googlu"
     var findAddr = document.querySelector('[name="receiver.findReceiverAddress"]');
     if (findAddr) findAddr.setAttribute('autocomplete', 'off');
+
+    // Step 2 — Maskování adresy svozu a odesílatele
+    //   (zaškrtnout checkbox + vybrat první možnost z "Maskované jméno" dropdownu)
+    try {
+      var maskCb = document.querySelector('[name="maskedAddress.applyMaskedAddress"]');
+      if (maskCb && !maskCb.checked) {
+        reactCheckboxClick(maskCb);
+        console.log('[DPD] mask checkbox checked');
+      }
+      var maskInput = await waitForEl(function () {
+        return findReactSelectInputByLabel('Maskované jméno');
+      }, 5000);
+      await openReactSelect(maskInput);
+      await pickFirstOption(maskInput);
+      console.log('[DPD] mask address: first option selected');
+    } catch (e) {
+      console.log('[DPD] mask address step skipped:', e.message);
+    }
 
     // Step 3 — PSČ (spustí načítání zón/služeb)
     await delay(250);
@@ -204,5 +236,5 @@
     }
   });
 
-  console.log('[DPD] Content script loaded v2.5 (MAIN world), waiting for bridge data...');
+  console.log('[DPD] Content script loaded v2.6 (MAIN world), waiting for bridge data...');
 })();
