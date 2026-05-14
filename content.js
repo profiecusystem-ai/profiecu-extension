@@ -130,7 +130,7 @@
 
   // ═══ Main run ═══
   async function run(data) {
-    console.log('[DPD] run() start (v2.6 for DPD 1.118.9+), data:', data);
+    console.log('[DPD] run() start (v2.7 — SK country support), data:', data);
 
     // Step 1 — jméno příjemce
     var nameField = await waitForEl('[name="receiver.name"]', 15000);
@@ -184,6 +184,32 @@
     var email = document.querySelector('[name="receiver.email"]');
     if (email && data.email) setNativeValue(email, data.email);
     console.log('[DPD] basic fields filled');
+
+    // Step 6b — Země (jen pokud data.country === 'SK')
+    // Default je Česko, takže pro CZ objednávky nic neděláme.
+    // Pro SK najdeme react-select s labelem "Země" (případně varianta)
+    // a vybereme "Slovensko".
+    if (data.country === 'SK') {
+      console.log('[DPD] country=SK → switching country dropdown to Slovensko');
+      try {
+        var countryInput = await waitForEl(function () {
+          return findReactSelectInputByLabel('Země')
+            || findReactSelectInputByLabel('Stát')
+            || findReactSelectInputByLabel('Country');
+        }, 8000);
+        await openReactSelect(countryInput);
+        // DPD label může být "Slovensko" nebo "Slovenská republika"
+        try {
+          await pickOption(countryInput, 'Slovensko');
+        } catch (_) {
+          await pickOption(countryInput, 'Slovenská republika');
+        }
+        console.log('[DPD] country: Slovensko selected');
+        await delay(400);
+      } catch (e) {
+        console.log('[DPD] country select failed (možná není react-select pro zemi viditelný): ' + e.message);
+      }
+    }
 
     // Step 7 — Hlavní služba: DPD Private
     await delay(2000);
