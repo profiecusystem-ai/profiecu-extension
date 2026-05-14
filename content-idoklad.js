@@ -152,7 +152,10 @@
     }
 
     // Step 2 — Partner: ICO branch (ARES) or manual popup
-    if (data.ico && String(data.ico).trim() !== '') {
+    // SK objednávky: ARES je jen česká databáze, pro SK firmy nefunguje.
+    // Routujeme rovnou do Step 2B (manual popup) i když máme IČO.
+    var isSk = data.country === 'SK';
+    if (data.ico && String(data.ico).trim() !== '' && !isSk) {
       console.log('[iDoklad] Step 2A: ICO branch with', data.ico);
       try {
         var odb = await waitForEl('input[placeholder*="Vyhledat v adresáři"]', 5000);
@@ -226,7 +229,7 @@
         console.error('[iDoklad] Step 2A failed:', e.message);
       }
     } else {
-      console.log('[iDoklad] Step 2B: manual popup branch');
+      console.log('[iDoklad] Step 2B: manual popup branch' + (isSk ? ' (SK — bypass ARES)' : ''));
       try {
         var plus = document.querySelector('[data-ui-id="csw-create-new-partner"]');
         if (!plus) throw new Error('create-new-partner button not found');
@@ -236,6 +239,24 @@
         setNativeValue(document.querySelector('input[name="Street"]'), data.street || '');
         setNativeValue(document.querySelector('input[name="PostalCode"]'), data.zip || '');
         setNativeValue(document.querySelector('input[name="City"]'), data.city || '');
+        // IČO (pokud máme — typicky SK firma)
+        if (data.ico) {
+          var icoEl = document.querySelector('input[name="IdentificationNumber"]')
+            || document.querySelector('input[name="Ico"]');
+          if (icoEl) setNativeValue(icoEl, String(data.ico).trim());
+        }
+        // DIČ (VAT ID) — pro SK firmy zadáme ručně
+        if (data.dic) {
+          var dicEl = document.querySelector('input[name="VatIdentificationNumber"]')
+            || document.querySelector('input[name="Dic"]')
+            || document.querySelector('input[name="VatId"]');
+          if (dicEl) {
+            setNativeValue(dicEl, String(data.dic).trim());
+            console.log('[iDoklad] Step 2B: DIČ filled =', data.dic);
+          } else {
+            console.warn('[iDoklad] Step 2B: DIČ input not found');
+          }
+        }
         await delay(300);
         var confirm = document.querySelector('[data-ui-id="csw-dialog-confirm"]');
         if (confirm) {
