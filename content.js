@@ -120,6 +120,29 @@
     clickOptionElement(option);
   }
 
+  // ═══ Napiš text do react-select inputu (postupně, aby filtroval) ═══
+  async function typeIntoReactSelect(input, text) {
+    input.focus();
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      // react-select reaguje na input event s nativeInputSetter
+      nativeInputSetter.call(input, (input.value || '') + ch);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await delay(40);
+    }
+    await delay(200);
+  }
+
+  // ═══ Strip mezinárodní předvolby z telefonu (defense in depth) ═══
+  // Frontend by měl posílat telefon už bez prefixu, ale jistota je jistota.
+  function stripPhonePrefix(phone) {
+    if (!phone) return '';
+    var digits = String(phone).replace(/[\s\-.()]/g, '');
+    digits = digits.replace(/^\+?(00)?42[01]/, '');
+    digits = digits.replace(/^\+/, '');
+    return digits;
+  }
+
   // ═══ "Ulice 123" → { street: "Ulice", houseNo: "123" } ═══
   function splitStreet(combined) {
     if (!combined) return { street: '', houseNo: '' };
@@ -130,7 +153,7 @@
 
   // ═══ Main run ═══
   async function run(data) {
-    console.log('[DPD] run() start (v2.7 — SK country support), data:', data);
+    console.log('[DPD] run() start (v2.9 — SK country FIRST + phone strip + EUR), data:', data);
 
     // Step 1 — jméno příjemce
     var nameField = await waitForEl('[name="receiver.name"]', 15000);
@@ -140,6 +163,34 @@
     // Step 1b — disable Google autocomplete na "Vyhledat adresu pomocí Googlu"
     var findAddr = document.querySelector('[name="receiver.findReceiverAddress"]');
     if (findAddr) findAddr.setAttribute('autocomplete', 'off');
+
+    // Step 1c — ZEMĚ (PŘED PSČ/městem/ulicí/telefonem)
+    //
+    // PRO SK objednávky musíme přepnout zemi JAKO PRVNÍ KROK, jinak:
+    //  - DPD validuje PSČ/město podle defaultní země (CZ)
+    //  - Měna dobírky zůstává v Kč (chceme EUR pro SK)
+    //  - Telefonní předvolba se nedoplní automaticky
+    //
+    // Flow: najdi react-select "Země" → klik (focus + ArrowDown otevře dropdown)
+    //       → napiš "slo" (filtruje na Slovensko) → vyber první z výsledku
+    if (data.country === 'SK') {
+      console.log('[DPD] country=SK → switching country dropdown FIRST');
+      try {
+        var countryInput = await waitForEl(function () {
+          return findReactSelectInputByLabel('Země')
+            || findReactSelectInputByLabel('Stát')
+            || findReactSelectInputByLabel('Country');
+        }, 8000);
+        await openReactSelect(countryInput);
+        await typeIntoReactSelect(countryInput, 'slo');
+        await pickFirstOption(countryInput);
+        console.log('[DPD] country: Slovensko vybráno (type "slo" → první možnost)');
+        // Po změně země DPD často re-renderuje další pole — počkej.
+        await delay(800);
+      } catch (e) {
+        console.log('[DPD] country select failed: ' + e.message);
+      }
+    }
 
     // Step 2 — Maskování adresy svozu a odesílatele
     //   (zaškrtnout checkbox + vybrat první možnost z "Maskované jméno" dropdownu)
@@ -179,37 +230,12 @@
     if (houseEl) setNativeValue(houseEl, parts.houseNo);
 
     // Step 6 — mobil + email
+    // Telefon: defensive strip prefixu (+420/+421) — DPD si doplní podle země.
     var mobile = document.querySelector('[name="receiver.mobileNumber"]');
-    if (mobile && data.phone) setNativeValue(mobile, data.phone);
+    if (mobile && data.phone) setNativeValue(mobile, stripPhonePrefix(data.phone));
     var email = document.querySelector('[name="receiver.email"]');
     if (email && data.email) setNativeValue(email, data.email);
     console.log('[DPD] basic fields filled');
-
-    // Step 6b — Země (jen pokud data.country === 'SK')
-    // Default je Česko, takže pro CZ objednávky nic neděláme.
-    // Pro SK najdeme react-select s labelem "Země" (případně varianta)
-    // a vybereme "Slovensko".
-    if (data.country === 'SK') {
-      console.log('[DPD] country=SK → switching country dropdown to Slovensko');
-      try {
-        var countryInput = await waitForEl(function () {
-          return findReactSelectInputByLabel('Země')
-            || findReactSelectInputByLabel('Stát')
-            || findReactSelectInputByLabel('Country');
-        }, 8000);
-        await openReactSelect(countryInput);
-        // DPD label může být "Slovensko" nebo "Slovenská republika"
-        try {
-          await pickOption(countryInput, 'Slovensko');
-        } catch (_) {
-          await pickOption(countryInput, 'Slovenská republika');
-        }
-        console.log('[DPD] country: Slovensko selected');
-        await delay(400);
-      } catch (e) {
-        console.log('[DPD] country select failed (možná není react-select pro zemi viditelný): ' + e.message);
-      }
-    }
 
     // Step 7 — Hlavní služba: DPD Private
     await delay(2000);
@@ -262,5 +288,5 @@
     }
   });
 
-  console.log('[DPD] Content script loaded v2.6 (MAIN world), waiting for bridge data...');
+  console.log('[DPD] Content script loaded v2.9 (MAIN world), waiting for bridge data...');
 })();
