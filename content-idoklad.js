@@ -369,6 +369,45 @@
       console.error('[iDoklad] Step 4 failed:', e.message);
     }
 
+    // Step 4b — DPH 0 % pro SK B2B (reverse charge / přenesená daň. povinnost).
+    // Trigger: country='SK' + vyplněné DIČ → klient je plátce DPH na SK,
+    // fakturujeme bez DPH (kupující doplácí DPH ve své zemi).
+    //
+    // DPH dropdown trigger: [data-ui-id="csw-item-vat-rate"] (SPAN s "21 %").
+    // Po kliku se otevře Kendo dropdown s .k-list-item options:
+    //   "0 %", "12 %", "21 %" (přesné texty s mezerou).
+    try {
+      var hasDic = data.dic && String(data.dic).trim() !== '';
+      if (isSk && hasDic) {
+        console.log('[iDoklad] Step 4b: SK B2B reverse charge → switching VAT to 0 %');
+        var vatTrigger = document.querySelector('[data-ui-id="csw-item-vat-rate"]');
+        if (vatTrigger) {
+          await trulyOpenDropdown(vatTrigger);
+          await waitForElObserver('.k-animation-container.k-animation-container-shown .k-list-item', 3000);
+          await delay(200);
+          var vatItems = Array.from(document.querySelectorAll('.k-animation-container.k-animation-container-shown .k-list-item'));
+          var zeroItem = vatItems.find(function (it) {
+            var t = (it.textContent || '').trim();
+            return t === '0 %' || t === '0%' || t.replace(/\s+/g, '') === '0%';
+          });
+          if (zeroItem) {
+            await trulyClickOption(zeroItem);
+            console.log('[iDoklad] Step 4b: VAT set to 0 % (SK B2B)');
+            await delay(400);
+          } else {
+            console.warn('[iDoklad] Step 4b: 0 % option not found in', vatItems.length, 'items');
+            vatItems.forEach(function (it, idx) {
+              console.log('  [' + idx + '] text="' + (it.textContent || '').trim() + '"');
+            });
+          }
+        } else {
+          console.warn('[iDoklad] Step 4b: csw-item-vat-rate trigger not found');
+        }
+      }
+    } catch (e) {
+      console.warn('[iDoklad] Step 4b failed:', e.message);
+    }
+
     // Step 5 — STOP (manual review & save)
     console.log('[iDoklad] All fields filled, waiting for manual review and Save click');
   }
@@ -383,5 +422,5 @@
     }
   });
 
-  console.log('[iDoklad] Content script loaded (MAIN world), waiting for bridge data...');
+  console.log('[iDoklad] Content script loaded v2.12 (MAIN world), waiting for bridge data...');
 })();
