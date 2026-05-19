@@ -133,6 +133,85 @@
     await delay(200);
   }
 
+  // ═══ Najdi country react-select PRO PŘÍJEMCE ═══
+  // DPD má víc react-selectů (země odesílatele, příjemce, maskované jméno).
+  // Hledáme ten v sekci kde je [name="receiver.name"], abychom nepřepsali
+  // omylem zemi odesílatele.
+  function findReceiverCountrySelect() {
+    var labelCandidates = ['Země', 'Stát', 'Country', 'Země doručení', 'Země příjemce'];
+    var labels = Array.from(document.querySelectorAll('label, [class*="label"]'));
+    // Najdi všechny labely odpovídající kandidátům
+    var matchingLabels = labels.filter(function (l) {
+      var t = (l.textContent || '').trim();
+      return labelCandidates.some(function (c) { return t === c || t.indexOf(c) === 0; });
+    });
+    console.log('[DPD] country: found ' + matchingLabels.length + ' matching labels');
+
+    for (var i = 0; i < matchingLabels.length; i++) {
+      var lbl = matchingLabels[i];
+      // Walk up max 15 úrovní, hledej kontejner, který obsahuje receiver.name
+      var section = lbl;
+      var inReceiverSection = false;
+      for (var j = 0; j < 15; j++) {
+        section = section.parentElement;
+        if (!section) break;
+        if (section.querySelector('[name="receiver.name"]')) {
+          inReceiverSection = true;
+          break;
+        }
+      }
+      // V té sekci hledej react-select input blízko labelu (walk down z labelu)
+      var walk = lbl;
+      for (var k = 0; k < 12; k++) {
+        walk = walk.parentElement;
+        if (!walk) break;
+        var input = walk.querySelector('input[role="combobox"][id^="react-select"]');
+        if (input) {
+          console.log('[DPD] country candidate found near label "' + (lbl.textContent || '').trim() + '", inReceiverSection=' + inReceiverSection);
+          if (inReceiverSection) return input;
+          // Pamatuj si first match jako fallback i mimo receiver sekci
+          if (!findReceiverCountrySelect._fallback) findReceiverCountrySelect._fallback = input;
+          break;
+        }
+      }
+    }
+    return findReceiverCountrySelect._fallback || null;
+  }
+
+  // ═══ Vyber Slovensko z react-select dropdown ═══
+  async function selectSkCountry(countryInput) {
+    await openReactSelect(countryInput);
+
+    // Try 1: type "slo" pro filtrování → vyber první výsledek
+    await typeIntoReactSelect(countryInput, 'slo');
+
+    var inputIdPrefix = countryInput.id.replace('-input', '');
+    var optionSelector = '[id^="' + inputIdPrefix + '-option-"]';
+
+    // Hledej option s textem obsahujícím "Slovens" (covers Slovensko + Slovenská republika)
+    var matchOption = null;
+    try {
+      matchOption = await waitForEl(function () {
+        return Array.from(document.querySelectorAll(optionSelector))
+          .find(function (o) {
+            var t = (o.textContent || '').trim().toLowerCase();
+            return t.indexOf('slovens') === 0 || t.indexOf('slovak') === 0;
+          });
+      }, 2500);
+      console.log('[DPD] country: found Slovensko option:', (matchOption.textContent || '').trim());
+    } catch (_) {
+      console.log('[DPD] country: no Slovensko option after type "slo", falling back to first option');
+      matchOption = document.getElementById(inputIdPrefix + '-option-0');
+    }
+
+    if (matchOption) {
+      clickOptionElement(matchOption);
+      return true;
+    }
+    console.log('[DPD] country: no option to click');
+    return false;
+  }
+
   // ═══ Strip mezinárodní předvolby z telefonu (defense in depth) ═══
   // Frontend by měl posílat telefon už bez prefixu, ale jistota je jistota.
   function stripPhonePrefix(phone) {
@@ -153,7 +232,7 @@
 
   // ═══ Main run ═══
   async function run(data) {
-    console.log('[DPD] run() start (v2.9 — SK country FIRST + phone strip + EUR), data:', data);
+    console.log('[DPD] run() start (v2.10 — robust SK country switch + fallbacks), data:', data);
 
     // Step 1 — jméno příjemce
     var nameField = await waitForEl('[name="receiver.name"]', 15000);
@@ -171,24 +250,43 @@
     //  - Měna dobírky zůstává v Kč (chceme EUR pro SK)
     //  - Telefonní předvolba se nedoplní automaticky
     //
-    // Flow: najdi react-select "Země" → klik (focus + ArrowDown otevře dropdown)
-    //       → napiš "slo" (filtruje na Slovensko) → vyber první z výsledku
+    // Flow: najdi country react-select PRO PŘÍJEMCE (ne odesílatele)
+    //       → otevři → napiš "slo" → klikni na option obsahující "Slovens"
+    //       Fallback: pokud find by-label selže, zkusit znovu po krátkém delay.
     if (data.country === 'SK') {
       console.log('[DPD] country=SK → switching country dropdown FIRST');
+      var countryInput = null;
       try {
-        var countryInput = await waitForEl(function () {
-          return findReactSelectInputByLabel('Země')
-            || findReactSelectInputByLabel('Stát')
-            || findReactSelectInputByLabel('Country');
-        }, 8000);
-        await openReactSelect(countryInput);
-        await typeIntoReactSelect(countryInput, 'slo');
-        await pickFirstOption(countryInput);
-        console.log('[DPD] country: Slovensko vybráno (type "slo" → první možnost)');
-        // Po změně země DPD často re-renderuje další pole — počkej.
-        await delay(800);
+        countryInput = await waitForEl(findReceiverCountrySelect, 8000);
+        console.log('[DPD] country input id=' + countryInput.id);
       } catch (e) {
-        console.log('[DPD] country select failed: ' + e.message);
+        console.log('[DPD] country react-select NOT FOUND in 8s. Dumping all react-select inputs:');
+        var allRs = Array.from(document.querySelectorAll('input[role="combobox"][id^="react-select"]'));
+        allRs.forEach(function (rs, idx) {
+          var siblingText = '';
+          var w = rs;
+          for (var s = 0; s < 8; s++) {
+            w = w.parentElement;
+            if (!w) break;
+            var l = w.querySelector('label, [class*="label"]');
+            if (l) { siblingText = (l.textContent || '').trim().slice(0, 60); break; }
+          }
+          console.log('  [' + idx + '] id=' + rs.id + ' nearestLabel="' + siblingText + '"');
+        });
+      }
+
+      if (countryInput) {
+        try {
+          var ok = await selectSkCountry(countryInput);
+          if (ok) {
+            console.log('[DPD] country: Slovensko vybráno');
+          } else {
+            console.warn('[DPD] country: selectSkCountry vrátil false');
+          }
+          await delay(800);
+        } catch (e) {
+          console.warn('[DPD] country selection error: ' + e.message);
+        }
       }
     }
 
@@ -288,5 +386,5 @@
     }
   });
 
-  console.log('[DPD] Content script loaded v2.9 (MAIN world), waiting for bridge data...');
+  console.log('[DPD] Content script loaded v2.10 (MAIN world), waiting for bridge data...');
 })();

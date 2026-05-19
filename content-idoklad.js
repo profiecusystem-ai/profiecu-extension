@@ -257,6 +257,79 @@
             console.warn('[iDoklad] Step 2B: DIČ input not found');
           }
         }
+
+        // Země — pro SK objednávku přepnout na "Slovenská republika".
+        // iDoklad Kendo dropdown — zkusit víc selektorů, pak najít option text.
+        if (isSk) {
+          await delay(300);
+          var countrySelectors = [
+            '[data-ui-id*="country" i]',
+            '[data-ui-id*="Country"]',
+            'input[name="CountryName"]',
+            'input[name="Country"]',
+            'select[name="CountryId"]',
+            'span[aria-label*="Země" i] input',
+            'span[aria-label*="Stát" i] input',
+          ];
+          var countryDropdown = null;
+          var matchedSelector = '';
+          for (var ci = 0; ci < countrySelectors.length; ci++) {
+            countryDropdown = document.querySelector(countrySelectors[ci]);
+            if (countryDropdown) {
+              matchedSelector = countrySelectors[ci];
+              console.log('[iDoklad] country dropdown found via selector:', matchedSelector);
+              break;
+            }
+          }
+          // Fallback: najít label "Země" v popupu a hledat sourozenec input
+          if (!countryDropdown) {
+            var labels = Array.from(document.querySelectorAll('label, .k-label, [class*="label"]'));
+            var countryLbl = labels.find(function (l) {
+              var t = (l.textContent || '').trim();
+              return t === 'Země' || t === 'Stát' || t.indexOf('Země') === 0;
+            });
+            if (countryLbl) {
+              var walk = countryLbl;
+              for (var s = 0; s < 10; s++) {
+                walk = walk.parentElement;
+                if (!walk) break;
+                countryDropdown = walk.querySelector('input[role="combobox"], .k-input-inner, .k-dropdownlist');
+                if (countryDropdown) {
+                  matchedSelector = '(label-based fallback)';
+                  console.log('[iDoklad] country dropdown found via label fallback');
+                  break;
+                }
+              }
+            }
+          }
+
+          if (countryDropdown) {
+            try {
+              await trulyOpenDropdown(countryDropdown);
+              await waitForElObserver('.k-list-item', 3000);
+              var items = Array.from(document.querySelectorAll('.k-list-item'));
+              var skItem = items.find(function (it) {
+                var t = (it.textContent || '').trim().toLowerCase();
+                return t.indexOf('slovens') === 0 || t.indexOf('slovak') === 0;
+              });
+              if (skItem) {
+                await trulyClickOption(skItem);
+                console.log('[iDoklad] country set: ' + (skItem.textContent || '').trim());
+                await delay(400);
+              } else {
+                console.warn('[iDoklad] country: Slovenská republika not found in', items.length, 'items');
+                items.slice(0, 10).forEach(function (it, idx) {
+                  console.log('  item[' + idx + ']="' + (it.textContent || '').trim().slice(0, 40) + '"');
+                });
+              }
+            } catch (e) {
+              console.warn('[iDoklad] country dropdown interaction failed:', e.message);
+            }
+          } else {
+            console.warn('[iDoklad] country dropdown NOT found in popup');
+          }
+        }
+
         await delay(300);
         var confirm = document.querySelector('[data-ui-id="csw-dialog-confirm"]');
         if (confirm) {
