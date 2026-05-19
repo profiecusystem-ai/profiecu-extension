@@ -134,48 +134,35 @@
   }
 
   // ═══ Najdi country react-select PRO PŘÍJEMCE ═══
-  // DPD má víc react-selectů (země odesílatele, příjemce, maskované jméno).
-  // Hledáme ten v sekci kde je [name="receiver.name"], abychom nepřepsali
-  // omylem zemi odesílatele.
+  // DPD Shipping 1.118.9 používá deterministický ID:
+  //   react-select-receiver.countryCode-input  (potvrzeno v Playwrightu)
+  // Pokud DPD ID v budoucnu změní, máme label-based fallback.
   function findReceiverCountrySelect() {
+    // Primary: deterministický ID
+    var input = document.querySelector('[id="react-select-receiver.countryCode-input"]');
+    if (input) {
+      console.log('[DPD] country select found via deterministic ID');
+      return input;
+    }
+    // Fallback: hledej v sekci s [name="receiver.name"]
+    console.log('[DPD] deterministic ID not found, trying label-based fallback');
     var labelCandidates = ['Země', 'Stát', 'Country', 'Země doručení', 'Země příjemce'];
     var labels = Array.from(document.querySelectorAll('label, [class*="label"]'));
-    // Najdi všechny labely odpovídající kandidátům
     var matchingLabels = labels.filter(function (l) {
       var t = (l.textContent || '').trim();
       return labelCandidates.some(function (c) { return t === c || t.indexOf(c) === 0; });
     });
-    console.log('[DPD] country: found ' + matchingLabels.length + ' matching labels');
-
     for (var i = 0; i < matchingLabels.length; i++) {
       var lbl = matchingLabels[i];
-      // Walk up max 15 úrovní, hledej kontejner, který obsahuje receiver.name
-      var section = lbl;
-      var inReceiverSection = false;
-      for (var j = 0; j < 15; j++) {
-        section = section.parentElement;
-        if (!section) break;
-        if (section.querySelector('[name="receiver.name"]')) {
-          inReceiverSection = true;
-          break;
-        }
-      }
-      // V té sekci hledej react-select input blízko labelu (walk down z labelu)
       var walk = lbl;
       for (var k = 0; k < 12; k++) {
         walk = walk.parentElement;
         if (!walk) break;
-        var input = walk.querySelector('input[role="combobox"][id^="react-select"]');
-        if (input) {
-          console.log('[DPD] country candidate found near label "' + (lbl.textContent || '').trim() + '", inReceiverSection=' + inReceiverSection);
-          if (inReceiverSection) return input;
-          // Pamatuj si first match jako fallback i mimo receiver sekci
-          if (!findReceiverCountrySelect._fallback) findReceiverCountrySelect._fallback = input;
-          break;
-        }
+        var rs = walk.querySelector('input[role="combobox"][id^="react-select"]');
+        if (rs && rs.id.indexOf('receiver') !== -1) return rs;
       }
     }
-    return findReceiverCountrySelect._fallback || null;
+    return null;
   }
 
   // ═══ Vyber Slovensko z react-select dropdown ═══
@@ -232,7 +219,7 @@
 
   // ═══ Main run ═══
   async function run(data) {
-    console.log('[DPD] run() start (v2.10 — robust SK country switch + fallbacks), data:', data);
+    console.log('[DPD] run() start (v2.11 — deterministic country selector), data:', data);
 
     // Step 1 — jméno příjemce
     var nameField = await waitForEl('[name="receiver.name"]', 15000);
@@ -386,5 +373,5 @@
     }
   });
 
-  console.log('[DPD] Content script loaded v2.10 (MAIN world), waiting for bridge data...');
+  console.log('[DPD] Content script loaded v2.11 (MAIN world), waiting for bridge data...');
 })();
