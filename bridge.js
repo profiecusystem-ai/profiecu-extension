@@ -6,10 +6,19 @@
 
   var API_URL = 'https://profiecu.vercel.app/api/dpd-data';
 
+  // Nonce token z hashe URL (#pe=<nonce>). API vydá data jen s ním a jednorázově
+  // (oprava #1 — dřív endpoint vracel PII komukoliv). Bez nonce se nefetchuje.
+  var nonceMatch = (location.hash || '').match(/[#&]pe=([^&]+)/);
+  var NONCE = nonceMatch ? decodeURIComponent(nonceMatch[1]) : null;
+  if (!NONCE) {
+    console.warn('[DPD Bridge] Chybi nonce v URL (#pe=...) — autofill preskocen.');
+    return;
+  }
+
   for (var attempt = 1; attempt <= 3; attempt++) {
     console.log('[DPD Bridge] Fetch attempt', attempt);
     try {
-      var res = await fetch(API_URL + '?t=' + Date.now(), {
+      var res = await fetch(API_URL + '?token=' + encodeURIComponent(NONCE) + '&t=' + Date.now(), {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       });
