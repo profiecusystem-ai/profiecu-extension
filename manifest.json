@@ -1,26 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "DPD ProfiECU",
-  "version": "2.13",
-  "description": "Automaticke vyplneni DPD a iDoklad formulare z ProfiECU",
-  "permissions": ["activeTab"],
-  "host_permissions": ["https://shipping.dpdgroup.com/*", "https://app.idoklad.cz/*", "https://profiecu.vercel.app/*"],
+  "name": "ProfiECU Autofill",
+  "version": "2.5",
+  "description": "Automatické vyplnění DPD a iDoklad formulářů z ProfiECU",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://shipping.dpdgroup.com/*",
+    "https://app.idoklad.cz/*",
+    "https://profiecu.vercel.app/*"
+  ],
   "action": {
-    "default_popup": "popup.html",
-    "default_icon": "icon.png"
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {
       "matches": ["https://shipping.dpdgroup.com/*"],
-      "js": ["bridge.js"],
-      "world": "ISOLATED",
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["https://shipping.dpdgroup.com/*"],
-      "js": ["content.js"],
-      "world": "MAIN",
-      "run_at": "document_idle"
+      "js": ["content-dpd.js"]
     },
     {
       "matches": ["https://app.idoklad.cz/IssuedInvoice/Create*"],

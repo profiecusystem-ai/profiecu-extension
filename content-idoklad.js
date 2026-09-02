@@ -1,426 +1,215 @@
 // content-idoklad.js — MAIN world
-// Has access to page's JS context (React internals, native prototypes)
+// Listens for IDOKLAD_PROFIECU_DATA from the ISOLATED-world bridge and fills the
+// iDoklad invoice form. Runs in MAIN world so it can bypass React's controlled
+// inputs using the native property descriptor setters.
 
 (function () {
-  'use strict';
+  // ─── Helpers ───────────────────────────────────────────────────────────────
 
-  // ═══ Native value setter — works with React controlled inputs ═══
-  var nativeInputSetter = Object.getOwnPropertyDescriptor(
-    window.HTMLInputElement.prototype, 'value'
-  ).set;
-  var nativeTextareaSetter = Object.getOwnPropertyDescriptor(
-    window.HTMLTextAreaElement.prototype, 'value'
-  ).set;
+  function delay(ms) {
+    return new Promise(function (r) { setTimeout(r, ms); });
+  }
 
   function setNativeValue(el, value) {
     if (!el) return;
-    el.focus();
-    var setter = el instanceof HTMLTextAreaElement
-      ? nativeTextareaSetter
-      : nativeInputSetter;
-    setter.call(el, value);
+    const proto = el instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (setter && setter.set) {
+      setter.set.call(el, value);
+    } else {
+      el.value = value;
+    }
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new Event('blur', { bubbles: true }));
   }
 
-  // ═══ Truly open dropdown — full pointer event sequence with coordinates ═══
-  function trulyOpenDropdown(dropdownInput) {
-    return new Promise(function (resolve) {
-      dropdownInput.scrollIntoView({ block: 'center', behavior: 'instant' });
-      setTimeout(function () {
-        var rect = dropdownInput.getBoundingClientRect();
-        function fireEvent(type, EventCtor) {
-          EventCtor = EventCtor || MouseEvent;
-          var evt = new EventCtor(type, {
-            bubbles: true, cancelable: true, composed: true,
-            view: window, button: 0, buttons: 1,
-            clientX: rect.left + rect.width / 2,
-            clientY: rect.top + rect.height / 2,
-            pointerType: 'mouse'
-          });
-          dropdownInput.dispatchEvent(evt);
-        }
-        dropdownInput.focus();
-        fireEvent('pointerdown', PointerEvent);
-        fireEvent('mousedown');
-        fireEvent('pointerup', PointerEvent);
-        fireEvent('mouseup');
-        fireEvent('click');
-        resolve();
-      }, 50);
-    });
-  }
-
-  // ═══ Truly click option — full pointer event sequence with coordinates ═══
-  function trulyClickOption(option) {
-    return new Promise(function (resolve) {
-      option.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-      setTimeout(function () {
-        var rect = option.getBoundingClientRect();
-        function fireEvent(type, EventCtor) {
-          EventCtor = EventCtor || MouseEvent;
-          option.dispatchEvent(new EventCtor(type, {
-            bubbles: true, cancelable: true, composed: true,
-            view: window, button: 0, buttons: 1,
-            clientX: rect.left + rect.width / 2,
-            clientY: rect.top + rect.height / 2,
-            pointerType: 'mouse'
-          }));
-        }
-        fireEvent('pointerdown', PointerEvent);
-        fireEvent('mousedown');
-        fireEvent('pointerup', PointerEvent);
-        fireEvent('mouseup');
-        fireEvent('click');
-        resolve();
-      }, 50);
-    });
-  }
-
-  // ═══ Wait for element (Promise-based polling) ═══
-  function waitForEl(predicate, timeout, interval) {
+  function waitForEl(selectorOrFn, timeout) {
     timeout = timeout || 5000;
-    interval = interval || 100;
+    const deadline = Date.now() + timeout;
     return new Promise(function (resolve, reject) {
-      var start = Date.now();
-      var check = function () {
-        var result = typeof predicate === 'string'
-          ? document.querySelector(predicate)
-          : predicate();
-        if (result) return resolve(result);
-        if (Date.now() - start >= timeout) {
-          return reject(new Error('waitForEl timeout: ' + predicate));
-        }
-        setTimeout(check, interval);
-      };
-      check();
+      (function tick() {
+        let el = null;
+        try {
+          el = typeof selectorOrFn === 'function'
+            ? selectorOrFn()
+            : document.querySelector(selectorOrFn);
+        } catch (_) {}
+        if (el) return resolve(el);
+        if (Date.now() >= deadline) return reject(new Error('waitForEl timeout: ' + selectorOrFn));
+        setTimeout(tick, 100);
+      })();
     });
   }
 
-  // ═══ Wait for element via MutationObserver ═══
   function waitForElObserver(selector, timeout) {
     timeout = timeout || 5000;
     return new Promise(function (resolve, reject) {
-      var existing = document.querySelector(selector);
+      const existing = document.querySelector(selector);
       if (existing) return resolve(existing);
-      var obs = new MutationObserver(function () {
-        var el = document.querySelector(selector);
-        if (el) { obs.disconnect(); resolve(el); }
+      const observer = new MutationObserver(function () {
+        const el = document.querySelector(selector);
+        if (el) {
+          observer.disconnect();
+          resolve(el);
+        }
       });
-      obs.observe(document.body, { childList: true, subtree: true });
+      observer.observe(document.body, { childList: true, subtree: true });
       setTimeout(function () {
-        obs.disconnect();
-        reject(new Error('observer timeout: ' + selector));
+        observer.disconnect();
+        reject(new Error('waitForElObserver timeout: ' + selector));
       }, timeout);
     });
   }
 
-  // ═══ Delay helper ═══
-  function delay(ms) {
-    return new Promise(function (r) { setTimeout(r, ms); });
+  function fireMouseEvent(el, type) {
+    const rect = el.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    el.dispatchEvent(new PointerEvent(type.replace('mouse', 'pointer'), {
+      bubbles: true, cancelable: true, clientX: x, clientY: y,
+      pointerType: 'mouse', button: 0,
+    }));
+    el.dispatchEvent(new MouseEvent(type, {
+      bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
+    }));
   }
 
-  // ═══ Main async run ═══
-  async function run(data) {
-    console.log('[iDoklad] run() start, data:', data);
+  async function trulyOpenDropdown(el) {
+    if (!el) return;
+    el.focus();
+    fireMouseEvent(el, 'mousedown');
+    await delay(30);
+    fireMouseEvent(el, 'mouseup');
+    fireMouseEvent(el, 'click');
+  }
 
-    // Step 1 — wait for Kendo init, open template dropdown, pick first real template
-    // (user has different profiles where the template is named differently, but
-    // there's always exactly one real template + the "Bez šablony" placeholder).
-    await delay(500);
+  async function trulyClickOption(el) {
+    if (!el) return;
+    el.scrollIntoView({ block: 'nearest' });
+    fireMouseEvent(el, 'mouseover');
+    await delay(20);
+    fireMouseEvent(el, 'mousedown');
+    await delay(20);
+    fireMouseEvent(el, 'mouseup');
+    fireMouseEvent(el, 'click');
+  }
+
+  // ─── Workflow ──────────────────────────────────────────────────────────────
+
+  async function fillInvoice(payload) {
     try {
-      var tmplDropdown = await waitForEl('[data-ui-id="csw-template"]', 5000);
-      console.log('[iDoklad] Step 1a: opening template dropdown');
-      await trulyOpenDropdown(tmplDropdown);
+      console.log('[iDoklad] Starting autofill with payload', payload);
 
-      await waitForElObserver('.k-list-item', 3000);
-      var items = Array.from(document.querySelectorAll('.k-list-item'));
-      var firstReal = items.find(function (el) {
-        return el.textContent.trim() !== 'Bez šablony';
-      });
-
-      if (firstReal) {
-        console.log('[iDoklad] Step 1b: clicking first real template:', firstReal.textContent.trim());
-        await trulyClickOption(firstReal);
-        await delay(800);
+      // Step 1: Select "CAR ELE" template
+      await delay(500);
+      const tmplDropdown = document.querySelector('[data-ui-id="csw-template"]');
+      if (!tmplDropdown) {
+        console.warn('[iDoklad] Template dropdown not found, skipping step 1');
       } else {
-        console.warn('[iDoklad] No real template option found (only "Bez šablony"?)');
-      }
-    } catch (e) {
-      console.warn('[iDoklad] Step 1 failed:', e.message);
-    }
-
-    // Step 2 — Partner: ICO branch (ARES) or manual popup
-    // SK objednávky: ARES je jen česká databáze, pro SK firmy nefunguje.
-    // Routujeme rovnou do Step 2B (manual popup) i když máme IČO.
-    var isSk = data.country === 'SK';
-    if (data.ico && String(data.ico).trim() !== '' && !isSk) {
-      console.log('[iDoklad] Step 2A: ICO branch with', data.ico);
-      try {
-        var odb = await waitForEl('input[placeholder*="Vyhledat v adresáři"]', 5000);
-        setNativeValue(odb, String(data.ico).trim());
-        await delay(150);
-
-        // Emulate Enter to trigger iDoklad's ARES lookup immediately
-        ['keydown', 'keypress', 'keyup'].forEach(function (type) {
-          odb.dispatchEvent(new KeyboardEvent(type, {
-            key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
-            bubbles: true, cancelable: true
-          }));
+        console.log('[iDoklad] Step 1a: opening template dropdown');
+        await trulyOpenDropdown(tmplDropdown);
+        await waitForElObserver('.k-list-item', 3000).catch(function () {});
+        const items = Array.from(document.querySelectorAll('.k-list-item'));
+        const carEle = items.find(function (el) {
+          return el.textContent.trim() === 'CAR ELE';
         });
-        console.log('[iDoklad] Step 2A: Enter dispatched, waiting for ARES response');
-
-        // After Enter, iDoklad may either:
-        //  A) show a .k-list-item suggestion (company already in address book)
-        //  B) auto-open the "Nový kontakt" popup with ARES-prefilled data
-        var detected = await Promise.race([
-          waitForEl(function () {
-            return document.querySelector('.k-list-item');
-          }, 6000).then(function (el) { return { type: 'listItem', el: el }; }),
-          waitForEl(function () {
-            return document.querySelector('input[name="CompanyName"]');
-          }, 6000).then(function (el) { return { type: 'autoPopup', el: el }; }),
-        ]).catch(function () { return null; });
-
-        if (detected && detected.type === 'listItem') {
-          console.log('[iDoklad] Step 2A: listItem suggestion appeared, clicking');
-          await trulyClickOption(detected.el);
+        if (carEle) {
+          console.log('[iDoklad] Step 1b: clicking CAR ELE');
+          await trulyClickOption(carEle);
           await delay(800);
-          console.log('[iDoklad] Step 2A done (listItem)');
-        } else if (detected && detected.type === 'autoPopup') {
-          console.log('[iDoklad] Step 2A: auto-popup opened (ARES prefilled), confirming');
-          await delay(500);
-          var autoConfirm = document.querySelector('[data-ui-id="csw-dialog-confirm"]');
-          if (autoConfirm) {
-            autoConfirm.click();
-            await delay(800);
-            console.log('[iDoklad] Step 2A done (autoPopup confirmed)');
-          } else {
-            console.warn('[iDoklad] Step 2A: auto-popup dialog confirm button not found');
-          }
         } else {
-          console.warn('[iDoklad] Step 2A: neither listItem nor auto-popup appeared within 6s');
+          console.warn('[iDoklad] CAR ELE option not found');
         }
+      }
 
-        // Defensive check: iDoklad může popup "Nový kontakt" otevřít AŽ PO
-        // kliku na listItem nebo po prvním potvrzení. Pokud do 4s přijde popup
-        // s CompanyName inputem, znovu potvrdíme — jinak pokračujeme normálně.
+      // Step 2: Partner — ICO branch or manual popup
+      if (payload.ico && String(payload.ico).trim() !== '') {
+        console.log('[iDoklad] Step 2A: ICO branch with', payload.ico);
         try {
-          var lateModal = await waitForEl(function () {
-            return document.querySelector('input[name="CompanyName"]');
+          const odb = await waitForEl('input[placeholder*="Vyhledat v adresáři"]', 5000);
+          setNativeValue(odb, String(payload.ico).trim());
+          await delay(1000); // ARES lookup
+          const navrh = await waitForEl(function () {
+            return document.querySelector('.k-list-item');
           }, 4000);
-          if (lateModal) {
-            console.log('[iDoklad] Step 2A: late auto-popup detected, confirming');
-            await delay(500);
-            var lateConfirm = document.querySelector('[data-ui-id="csw-dialog-confirm"]');
-            if (lateConfirm) {
-              lateConfirm.click();
-              await delay(800);
-              console.log('[iDoklad] Step 2A: late popup confirmed');
-            } else {
-              console.warn('[iDoklad] Step 2A: late popup confirm button not found');
-            }
-          }
-        } catch (_) {
-          // late popup se neobjevil (timeout) — pokračuj na Step 3
+          await trulyClickOption(navrh);
+          await delay(800);
+          console.log('[iDoklad] Step 2A done');
+        } catch (err) {
+          console.error('[iDoklad] Step 2A failed:', err.message);
         }
-      } catch (e) {
-        console.error('[iDoklad] Step 2A failed:', e.message);
-      }
-    } else {
-      console.log('[iDoklad] Step 2B: manual popup branch' + (isSk ? ' (SK — bypass ARES)' : ''));
-      try {
-        var plus = document.querySelector('[data-ui-id="csw-create-new-partner"]');
-        if (!plus) throw new Error('create-new-partner button not found');
-        plus.click();
-        await waitForEl('input[name="CompanyName"]', 3000);
-        setNativeValue(document.querySelector('input[name="CompanyName"]'), data.name || '');
-        setNativeValue(document.querySelector('input[name="Street"]'), data.street || '');
-        setNativeValue(document.querySelector('input[name="PostalCode"]'), data.zip || '');
-        setNativeValue(document.querySelector('input[name="City"]'), data.city || '');
-        // IČO (pokud máme — typicky SK firma)
-        if (data.ico) {
-          var icoEl = document.querySelector('input[name="IdentificationNumber"]')
-            || document.querySelector('input[name="Ico"]');
-          if (icoEl) setNativeValue(icoEl, String(data.ico).trim());
-        }
-        // DIČ (VAT ID) — pro SK firmy zadáme ručně
-        if (data.dic) {
-          var dicEl = document.querySelector('input[name="VatIdentificationNumber"]')
-            || document.querySelector('input[name="Dic"]')
-            || document.querySelector('input[name="VatId"]');
-          if (dicEl) {
-            setNativeValue(dicEl, String(data.dic).trim());
-            console.log('[iDoklad] Step 2B: DIČ filled =', data.dic);
-          } else {
-            console.warn('[iDoklad] Step 2B: DIČ input not found');
-          }
-        }
-
-        // Země — pro SK objednávku přepnout na "Slovenská republika".
-        // iDoklad Kendo dropdown — zkusit víc selektorů, pak najít option text.
-        if (isSk) {
-          await delay(300);
-          var countrySelectors = [
-            '[data-ui-id*="country" i]',
-            '[data-ui-id*="Country"]',
-            'input[name="CountryName"]',
-            'input[name="Country"]',
-            'select[name="CountryId"]',
-            'span[aria-label*="Země" i] input',
-            'span[aria-label*="Stát" i] input',
-          ];
-          var countryDropdown = null;
-          var matchedSelector = '';
-          for (var ci = 0; ci < countrySelectors.length; ci++) {
-            countryDropdown = document.querySelector(countrySelectors[ci]);
-            if (countryDropdown) {
-              matchedSelector = countrySelectors[ci];
-              console.log('[iDoklad] country dropdown found via selector:', matchedSelector);
-              break;
-            }
-          }
-          // Fallback: najít label "Země" v popupu a hledat sourozenec input
-          if (!countryDropdown) {
-            var labels = Array.from(document.querySelectorAll('label, .k-label, [class*="label"]'));
-            var countryLbl = labels.find(function (l) {
-              var t = (l.textContent || '').trim();
-              return t === 'Země' || t === 'Stát' || t.indexOf('Země') === 0;
-            });
-            if (countryLbl) {
-              var walk = countryLbl;
-              for (var s = 0; s < 10; s++) {
-                walk = walk.parentElement;
-                if (!walk) break;
-                countryDropdown = walk.querySelector('input[role="combobox"], .k-input-inner, .k-dropdownlist');
-                if (countryDropdown) {
-                  matchedSelector = '(label-based fallback)';
-                  console.log('[iDoklad] country dropdown found via label fallback');
-                  break;
-                }
-              }
-            }
-          }
-
-          if (countryDropdown) {
-            try {
-              await trulyOpenDropdown(countryDropdown);
-              await waitForElObserver('.k-list-item', 3000);
-              var items = Array.from(document.querySelectorAll('.k-list-item'));
-              var skItem = items.find(function (it) {
-                var t = (it.textContent || '').trim().toLowerCase();
-                return t.indexOf('slovens') === 0 || t.indexOf('slovak') === 0;
-              });
-              if (skItem) {
-                await trulyClickOption(skItem);
-                console.log('[iDoklad] country set: ' + (skItem.textContent || '').trim());
-                await delay(400);
-              } else {
-                console.warn('[iDoklad] country: Slovenská republika not found in', items.length, 'items');
-                items.slice(0, 10).forEach(function (it, idx) {
-                  console.log('  item[' + idx + ']="' + (it.textContent || '').trim().slice(0, 40) + '"');
-                });
-              }
-            } catch (e) {
-              console.warn('[iDoklad] country dropdown interaction failed:', e.message);
-            }
-          } else {
-            console.warn('[iDoklad] country dropdown NOT found in popup');
-          }
-        }
-
-        await delay(300);
-        var confirm = document.querySelector('[data-ui-id="csw-dialog-confirm"]');
-        if (confirm) {
-          confirm.click();
-        } else {
-          console.warn('[iDoklad] Dialog confirm button not found');
-        }
-        await delay(800);
-        console.log('[iDoklad] Step 2B done');
-      } catch (e) {
-        console.error('[iDoklad] Step 2B failed:', e.message);
-      }
-    }
-
-    // Step 3 — Description + item name
-    try {
-      var popisText = 'Výrobní číslo produktu: ' + (data.sn || '');
-      var descEl = document.querySelector('textarea[name="Description"]');
-      var itemNameEl = document.querySelector('input[name="Items[0].Name"]');
-      if (descEl) setNativeValue(descEl, popisText);
-      if (itemNameEl) setNativeValue(itemNameEl, popisText);
-      console.log('[iDoklad] Step 3: description & item name filled');
-    } catch (e) {
-      console.error('[iDoklad] Step 3 failed:', e.message);
-    }
-
-    // Step 4 — Price
-    try {
-      var priceEl = document.querySelector('input[name="Items[0].Price"]');
-      if (priceEl) {
-        setNativeValue(priceEl, String(data.price != null ? data.price : ''));
-        console.log('[iDoklad] Step 4: price filled =', data.price);
       } else {
-        console.warn('[iDoklad] Price input not found');
-      }
-    } catch (e) {
-      console.error('[iDoklad] Step 4 failed:', e.message);
-    }
-
-    // Step 4b — DPH 0 % pro SK B2B (reverse charge / přenesená daň. povinnost).
-    // Trigger: country='SK' + vyplněné DIČ → klient je plátce DPH na SK,
-    // fakturujeme bez DPH (kupující doplácí DPH ve své zemi).
-    //
-    // DPH dropdown trigger: [data-ui-id="csw-item-vat-rate"] (SPAN s "21 %").
-    // Po kliku se otevře Kendo dropdown s .k-list-item options:
-    //   "0 %", "12 %", "21 %" (přesné texty s mezerou).
-    try {
-      var hasDic = data.dic && String(data.dic).trim() !== '';
-      if (isSk && hasDic) {
-        console.log('[iDoklad] Step 4b: SK B2B reverse charge → switching VAT to 0 %');
-        var vatTrigger = document.querySelector('[data-ui-id="csw-item-vat-rate"]');
-        if (vatTrigger) {
-          await trulyOpenDropdown(vatTrigger);
-          await waitForElObserver('.k-animation-container.k-animation-container-shown .k-list-item', 3000);
-          await delay(200);
-          var vatItems = Array.from(document.querySelectorAll('.k-animation-container.k-animation-container-shown .k-list-item'));
-          var zeroItem = vatItems.find(function (it) {
-            var t = (it.textContent || '').trim();
-            return t === '0 %' || t === '0%' || t.replace(/\s+/g, '') === '0%';
-          });
-          if (zeroItem) {
-            await trulyClickOption(zeroItem);
-            console.log('[iDoklad] Step 4b: VAT set to 0 % (SK B2B)');
-            await delay(400);
+        console.log('[iDoklad] Step 2B: manual popup branch');
+        try {
+          const plus = document.querySelector('[data-ui-id="csw-create-new-partner"]');
+          if (!plus) throw new Error('create-new-partner button not found');
+          plus.click();
+          await waitForEl('input[name="CompanyName"]', 3000);
+          setNativeValue(document.querySelector('input[name="CompanyName"]'), payload.name || '');
+          setNativeValue(document.querySelector('input[name="Street"]'), payload.street || '');
+          setNativeValue(document.querySelector('input[name="PostalCode"]'), payload.zip || '');
+          setNativeValue(document.querySelector('input[name="City"]'), payload.city || '');
+          await delay(300);
+          const confirm = document.querySelector('[data-ui-id="csw-dialog-confirm"]');
+          if (confirm) {
+            confirm.click();
           } else {
-            console.warn('[iDoklad] Step 4b: 0 % option not found in', vatItems.length, 'items');
-            vatItems.forEach(function (it, idx) {
-              console.log('  [' + idx + '] text="' + (it.textContent || '').trim() + '"');
-            });
+            console.warn('[iDoklad] Dialog confirm button not found');
           }
-        } else {
-          console.warn('[iDoklad] Step 4b: csw-item-vat-rate trigger not found');
+          await delay(800);
+          console.log('[iDoklad] Step 2B done');
+        } catch (err) {
+          console.error('[iDoklad] Step 2B failed:', err.message);
         }
       }
-    } catch (e) {
-      console.warn('[iDoklad] Step 4b failed:', e.message);
-    }
 
-    // Step 5 — STOP (manual review & save)
-    console.log('[iDoklad] All fields filled, waiting for manual review and Save click');
+      // Step 3: Description + item name
+      try {
+        const popisText = 'Výrobní číslo produktu: ' + (payload.sn || '');
+        const descEl = document.querySelector('textarea[name="Description"]');
+        const itemNameEl = document.querySelector('input[name="Items[0].Name"]');
+        if (descEl) setNativeValue(descEl, popisText);
+        if (itemNameEl) setNativeValue(itemNameEl, popisText);
+        console.log('[iDoklad] Step 3: description & item name filled');
+      } catch (err) {
+        console.error('[iDoklad] Step 3 failed:', err.message);
+      }
+
+      // Step 4: Price
+      try {
+        const priceEl = document.querySelector('input[name="Items[0].Price"]');
+        if (priceEl) {
+          setNativeValue(priceEl, String(payload.price != null ? payload.price : ''));
+          console.log('[iDoklad] Step 4: price filled =', payload.price);
+        } else {
+          console.warn('[iDoklad] Price input not found');
+        }
+      } catch (err) {
+        console.error('[iDoklad] Step 4 failed:', err.message);
+      }
+
+      // Step 5: STOP — user reviews & saves manually
+      console.log('[iDoklad] All fields filled, waiting for manual review and Save click');
+    } catch (err) {
+      console.error('[iDoklad] Autofill fatal error:', err);
+    }
   }
 
-  // ═══ Listen for data from bridge-idoklad.js (ISOLATED world) ═══
-  window.addEventListener('message', function (event) {
-    if (event.data && event.data.type === 'IDOKLAD_PROFIECU_DATA') {
-      console.log('[iDoklad] Received data from bridge');
-      run(event.data.payload).catch(function (err) {
-        console.error('[iDoklad] run() error:', err);
-      });
+  // ─── Message listener ──────────────────────────────────────────────────────
+
+  window.addEventListener('message', function (ev) {
+    if (!ev || !ev.data || ev.data.type !== 'IDOKLAD_PROFIECU_DATA') return;
+    if (ev.source !== window) return;
+    const payload = ev.data.payload;
+    if (!payload) {
+      console.warn('[iDoklad] Received empty payload');
+      return;
     }
+    fillInvoice(payload);
   });
 
-  console.log('[iDoklad] Content script loaded v2.12 (MAIN world), waiting for bridge data...');
+  console.log('[iDoklad] Content script loaded in MAIN world, waiting for payload');
 })();

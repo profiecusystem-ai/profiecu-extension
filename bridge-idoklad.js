@@ -1,39 +1,43 @@
 // bridge-idoklad.js — ISOLATED world
-// Fetches data from ProfiECU API and sends to MAIN world via postMessage
+// Fetches last-saved order payload from ProfiECU and forwards it to the MAIN world
+// content-idoklad.js via window.postMessage. Runs on document_idle on
+// https://app.idoklad.cz/IssuedInvoice/Create*.
 
-(async function () {
-  'use strict';
+(function () {
+  const API_URL = 'https://profiecu.vercel.app/api/idoklad-data';
+  const MAX_ATTEMPTS = 3;
+  const RETRY_INTERVAL_MS = 2000;
 
-  var API_URL = 'https://profiecu.vercel.app/api/idoklad-data';
-
-  // Nonce token z hashe URL (#pe=<nonce>). API vydá data jen s ním a jednorázově
-  // (oprava #1 — dřív endpoint vracel PII komukoliv). Bez nonce se nefetchuje.
-  var nonceMatch = (location.hash || '').match(/[#&]pe=([^&]+)/);
-  var NONCE = nonceMatch ? decodeURIComponent(nonceMatch[1]) : null;
-  if (!NONCE) {
-    console.warn('[iDoklad Bridge] Chybi nonce v URL (#pe=...) — autofill preskocen.');
-    return;
+  // Nonce token z hashe URL (#pe=<nonce>) — data se vydají jen s ním (one-time).
+  function readNonce() {
+    const m = (location.hash || '').match(/[#&]pe=([^&]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
   }
+  const NONCE = readNonce();
 
-  for (var attempt = 1; attempt <= 3; attempt++) {
-    console.log('[iDoklad Bridge] Fetch attempt', attempt);
+  async function fetchPayload(attempt) {
+    attempt = attempt || 1;
+    if (!NONCE) {
+      console.warn('[iDoklad bridge] Chybí nonce v URL (#pe=…) — autofill přeskočen.');
+      return;
+    }
     try {
-      var res = await fetch(API_URL + '?token=' + encodeURIComponent(NONCE) + '&t=' + Date.now(), {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
-      });
-      var data = await res.json();
-      if (data && (data.name || data.sn)) {
-        console.log('[iDoklad Bridge] Data received:', data);
-        window.postMessage({ type: 'IDOKLAD_PROFIECU_DATA', payload: data }, '*');
-        return;
+      const res = await fetch(API_URL + '?token=' + encodeURIComponent(NONCE), { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (!data) throw new Error('empty body');
+      console.log('[iDoklad bridge] Payload fetched on attempt ' + attempt, data);
+      window.postMessage({ type: 'IDOKLAD_PROFIECU_DATA', payload: data }, '*');
+    } catch (err) {
+      console.warn('[iDoklad bridge] Attempt ' + attempt + ' failed:', err && err.message);
+      if (attempt < MAX_ATTEMPTS) {
+        setTimeout(function () { fetchPayload(attempt + 1); }, RETRY_INTERVAL_MS);
+      } else {
+        console.error('[iDoklad bridge] Giving up after ' + MAX_ATTEMPTS + ' attempts');
       }
-    } catch (e) {
-      console.warn('[iDoklad Bridge] Fetch error:', e);
-    }
-    if (attempt < 3) {
-      await new Promise(function (r) { setTimeout(r, 2000); });
     }
   }
-  console.log('[iDoklad Bridge] No data after 3 attempts');
+
+  console.log('[iDoklad bridge] Loaded, fetching payload...');
+  fetchPayload();
 })();

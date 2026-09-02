@@ -4,106 +4,47 @@
   <meta charset="UTF-8">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; width: 320px; padding: 16px; background: #f8fafc; }
-    h1 { font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
-    p.sub { font-size: 11px; color: #94a3b8; margin-bottom: 12px; }
-    label { display: block; font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 3px; margin-top: 8px; }
-    input { width: 100%; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; outline: none; }
-    input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.1); }
-    .row { display: flex; gap: 8px; }
-    .row > div { flex: 1; }
-    button { width: 100%; margin-top: 14px; padding: 10px; background: #3b82f6; color: white; border: none; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
-    button:hover { background: #2563eb; }
-    .status { font-size: 11px; color: #22c55e; text-align: center; margin-top: 8px; display: none; }
-    .status.show { display: block; }
-    .auto-badge { font-size: 10px; background: #dbeafe; color: #2563eb; padding: 2px 8px; border-radius: 6px; display: inline-block; margin-bottom: 10px; }
+    body { width: 320px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 16px; background: #f8fafc; }
+    h2 { font-size: 16px; color: #1e293b; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .logo { width: 24px; height: 24px; background: #2563eb; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; }
+    .btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 8px; transition: background 0.2s; }
+    .btn-dpd { background: #f59e0b; color: white; }
+    .btn-dpd:hover { background: #d97706; }
+    .btn-idoklad { background: #7c3aed; color: white; }
+    .btn-idoklad:hover { background: #6d28d9; }
+    .status { font-size: 12px; color: #64748b; margin-top: 8px; text-align: center; }
+    .status.success { color: #16a34a; }
+    .status.error { color: #dc2626; }
+    .divider { border-top: 1px solid #e2e8f0; margin: 12px 0; }
+    .section-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    input { width: 100%; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; margin-bottom: 6px; }
+    input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+    label { font-size: 12px; color: #475569; display: block; margin-bottom: 2px; }
   </style>
 </head>
 <body>
-  <h1>DPD ProfiECU</h1>
-  <p class="sub">Automatické vyplnění DPD formuláře</p>
+  <h2><span class="logo">P</span> ProfiECU Autofill</h2>
 
-  <div id="auto-data" style="display:none">
-    <span class="auto-badge" id="auto-name"></span>
-  </div>
+  <div class="section-label">Automaticky z ProfiECU</div>
+  <button class="btn btn-dpd" id="fillDpd">🚚 Vyplnit DPD formulář</button>
+  <button class="btn btn-idoklad" id="fillIdoklad">📄 Vyplnit iDoklad</button>
 
-  <label>Jméno příjemce</label>
-  <input type="text" id="name" placeholder="Jan Novák">
+  <div class="divider"></div>
 
-  <label>Ulice a číslo</label>
-  <input type="text" id="street" placeholder="Hlavní 123">
+  <div class="section-label">Ruční zadání (záloha)</div>
+  <label>Jméno</label><input id="name" placeholder="Jan Novák">
+  <label>Ulice</label><input id="street" placeholder="Hlavní 15">
+  <label>PSČ</label><input id="zip" placeholder="11000">
+  <label>Město</label><input id="city" placeholder="Praha">
+  <label>Telefon</label><input id="phone" placeholder="777123456">
+  <label>E-mail</label><input id="email" placeholder="jan@email.cz">
+  <label>Částka</label><input id="amount" placeholder="14500">
+  <label>Výrobní číslo</label><input id="productName" placeholder="036906034DF">
+  <button class="btn btn-dpd" id="manualDpd" style="margin-top:8px">Vyplnit DPD (ruční data)</button>
+  <button class="btn btn-idoklad" id="manualIdoklad">Vyplnit iDoklad (ruční data)</button>
 
-  <div class="row">
-    <div>
-      <label>PSČ</label>
-      <input type="text" id="zip" placeholder="12345">
-    </div>
-    <div>
-      <label>Město</label>
-      <input type="text" id="city" placeholder="Praha">
-    </div>
-  </div>
+  <div id="statusMsg" class="status"></div>
 
-  <label>Telefon</label>
-  <input type="tel" id="phone" placeholder="777123456">
-
-  <label>Email</label>
-  <input type="email" id="email" placeholder="klient@email.cz">
-
-  <label>Částka dobírky (Kč)</label>
-  <input type="text" id="amount" placeholder="14500">
-
-  <button id="fill-btn">Vyplnit DPD</button>
-  <div class="status" id="status">Data uložena — otevřete DPD zásilku</div>
-
-  <script>
-    // Load existing data if available
-    chrome.storage.local.get('dpd_autofill', (result) => {
-      if (result.dpd_autofill) {
-        const d = result.dpd_autofill;
-        document.getElementById('name').value = d.name || '';
-        document.getElementById('street').value = d.street || '';
-        document.getElementById('zip').value = d.zip || '';
-        document.getElementById('city').value = d.city || '';
-        document.getElementById('phone').value = d.phone || '';
-        document.getElementById('email').value = d.email || '';
-        document.getElementById('amount').value = d.amount || '';
-        if (d.name) {
-          document.getElementById('auto-data').style.display = 'block';
-          document.getElementById('auto-name').textContent = 'Z ProfiECU: ' + d.name;
-        }
-      }
-    });
-
-    document.getElementById('fill-btn').addEventListener('click', () => {
-      const data = {
-        name: document.getElementById('name').value,
-        street: document.getElementById('street').value,
-        houseNo: '',
-        zip: document.getElementById('zip').value,
-        city: document.getElementById('city').value,
-        phone: document.getElementById('phone').value,
-        email: document.getElementById('email').value,
-        amount: document.getElementById('amount').value,
-      };
-
-      // Save to chrome.storage for content script
-      chrome.storage.local.set({ dpd_autofill: data }, () => {
-        const status = document.getElementById('status');
-        status.classList.add('show');
-
-        // Also inject into active DPD tab if open
-        chrome.tabs.query({ url: 'https://shipping.dpdgroup.com/*' }, (tabs) => {
-          if (tabs.length > 0) {
-            chrome.scripting.executeScript({
-              target: { tabId: tabs[0].id },
-              files: ['content.js']
-            });
-            status.textContent = 'Vyplňuji formulář...';
-          }
-        });
-      });
-    });
-  </script>
+  <script src="popup.js"></script>
 </body>
 </html>
