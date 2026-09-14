@@ -188,6 +188,40 @@ function selectOption(sel, value, matchRe) {
   return true;
 }
 
+// --- země příjemce -----------------------------------------------------------
+// Nový formulář má zemi jako Chakra combobox, ne <select> — hodnotu jde
+// nastavit jen kliknutím v otevřené nabídce, ne zápisem do pole.
+async function nastavZemi(zeme) {
+  var matchRe = zeme === 'SK' ? /^(SK|Slovak)/i : /^(CZ|Czech|Česk)/i;
+  var el = await waitField({
+    sel: ['[name="receiver.countryCode"]', '[data-testid="receiver-country"]', '[name="receiver.country"]', '[name="country"]'],
+    label: /^(země|country)$/i,
+  }, 15000);
+
+  if (el && el.tagName === 'SELECT') {
+    var ok = selectOption(el, zeme, matchRe);
+    zapis('země', ok ? 'vyplněno' : 'NEVYPLNĚNO', ok ? el.value : 'v nabídce není žádná odpovídající položka');
+    return;
+  }
+
+  if (el) {
+    setVal(el, zeme);
+    await sleep(300);
+    if ((el.value || '').trim().toUpperCase() === zeme) {
+      zapis('země', 'vyplněno', el.value);
+      return;
+    }
+  }
+
+  var ovladac = await otevriComboboxPoLabelu(/^(země|country)$/i);
+  if (!ovladac) {
+    zapis('země', el ? 'NEUDRŽELO SE' : 'NENALEZENO', el ? 'hodnota se po zápisu vrátila zpět (Chakra combobox)' : 'pole ve formuláři není');
+    return;
+  }
+  var vybrano = await vyberOptionVOtevrenemMenu(matchRe, 12);
+  zapis('země', vybrano ? 'vyplněno' : 'VYBRAT RUČNĚ', vybrano || 'v nabídce nebyla odpovídající položka');
+}
+
 // --- adresa: oddělení čísla popisného od ulice ------------------------------
 // Nový formulář má „Číslo popisné" jako samostatné (a často povinné) pole.
 // Appka posílá ulici i s číslem, takže když houseNo nedorazí, urveme ho tady.
@@ -217,22 +251,17 @@ function najdiCodChip() {
   return null;
 }
 
-async function otevriDoplnkoveSluzby() {
-  var box = await waitAny([
-    '[name="services.additionalProducts"]',
-    '#shipment-services-information',
-    '#shipment-additional-services',
-  ], 20000);
-  if (!box) return null;
-
-  // Ovládací prvek multiselectu hledáme v okolí popisku „Doplňkové služby".
+// Chakra UI comboboxy (doplňkové služby, země, maskovací adresa) nejdou
+// vyplnit zápisem hodnoty — je potřeba kliknout na ovládací prvek a pak na
+// položku v otevřené nabídce. Sdílený pár funkcí pro všechny tři.
+async function otevriComboboxPoLabelu(labelRe) {
   var kandidati = Array.prototype.slice.call(
     document.querySelectorAll('[role="combobox"], [aria-haspopup="listbox"], [class*="multiSelect"], [class*="multi-select"], [class*="select__control"]')
   );
   var cil = kandidati.find(function (el) {
     var kontejner = el.closest('div');
     for (var d = 0; d < 4 && kontejner; d++, kontejner = kontejner.parentElement) {
-      if (/doplňkov|additional service/i.test(textOf(kontejner))) return true;
+      if (labelRe.test(textOf(kontejner))) return true;
     }
     return false;
   });
@@ -240,6 +269,34 @@ async function otevriDoplnkoveSluzby() {
   cil.click();
   await sleep(400);
   return cil;
+}
+
+async function vyberOptionVOtevrenemMenu(matchRe, pokusu) {
+  for (var pokus = 0; pokus < (pokusu || 12); pokus++) {
+    var polozky = Array.prototype.slice.call(
+      document.querySelectorAll('[role="option"], li, [class*="option"], [class*="menuitem"]')
+    );
+    var hit = polozky.find(function (el) {
+      return matchRe.test(textOf(el)) && el.offsetParent !== null;
+    });
+    if (hit) {
+      hit.click();
+      await sleep(400);
+      return textOf(hit);
+    }
+    await sleep(300);
+  }
+  return null;
+}
+
+async function otevriDoplnkoveSluzby() {
+  var box = await waitAny([
+    '[name="services.additionalProducts"]',
+    '#shipment-services-information',
+    '#shipment-additional-services',
+  ], 20000);
+  if (!box) return null;
+  return otevriComboboxPoLabelu(/doplňkov|additional service/i);
 }
 
 async function zaskrtniDobirku(chceme) {
@@ -270,23 +327,49 @@ async function zaskrtniDobirku(chceme) {
     return false;
   }
 
-  for (var pokus = 0; pokus < 12; pokus++) {
-    var polozky = Array.prototype.slice.call(
-      document.querySelectorAll('[role="option"], li, [class*="option"], [class*="menuitem"]')
-    );
-    var hit = polozky.find(function (el) {
-      return COD_RE.test(textOf(el)) && el.offsetParent !== null;
-    });
-    if (hit) {
-      hit.click();
-      await sleep(500);
-      zapis('dobírka', najdiCodChip() ? 'zaškrtnuto' : 'ZKONTROLOVAT RUČNĚ', textOf(hit));
-      return true;
-    }
-    await sleep(300);
+  var hit = await vyberOptionVOtevrenemMenu(COD_RE, 12);
+  if (hit) {
+    zapis('dobírka', najdiCodChip() ? 'zaškrtnuto' : 'ZKONTROLOVAT RUČNĚ', hit);
+    return true;
   }
   zapis('dobírka', 'ZAŠKRTNOUT RUČNĚ', 'v nabídce nebyla položka Dobírka');
   return false;
+}
+
+// --- maskovací adresa odesílatele -------------------------------------------
+// `[name="useMarkedAddress"]` byl název ze staré verze formuláře a po
+// přestavbě 14. 9. 2026 nejspíš neexistuje — proto se nikdy nehlásil ani jako
+// NENALEZENO (mlčel stejně jako úspěch). Hledáme napřed jako checkbox pod
+// popiskem, pak jako Chakra combobox, a výsledek se vždycky zapíše.
+async function zaskrtniMaskovaciAdresu() {
+  var checkbox = document.querySelector('[name="useMarkedAddress"]') ||
+    document.querySelector('[name="senderInformation.useMaskedAddress"]') ||
+    byLabel(/masko/i);
+
+  if (checkbox && checkbox.type === 'checkbox') {
+    if (checkbox.checked) {
+      zapis('maskovací adresa', 'v pořádku', 'byla zaškrtnutá už předtím');
+      return;
+    }
+    checkbox.click();
+    await sleep(300);
+    var vyber = document.querySelector('[name="maskAddressName"]');
+    if (vyber && vyber.tagName === 'SELECT' && vyber.options.length > 1) {
+      vyber.selectedIndex = 1;
+      fire(vyber, ['change']);
+    }
+    zapis('maskovací adresa', checkbox.checked ? 'zaškrtnuto' : 'ZKONTROLOVAT RUČNĚ', '');
+    return;
+  }
+
+  var ovladac = await otevriComboboxPoLabelu(/masko/i);
+  if (ovladac) {
+    var vysledek = await vyberOptionVOtevrenemMenu(/masko/i, 6);
+    zapis('maskovací adresa', vysledek ? 'zaškrtnuto' : 'ZAŠKRTNOUT RUČNĚ', vysledek || 'položka v otevřené nabídce nenalezena');
+    return;
+  }
+
+  zapis('maskovací adresa', 'NENALEZENO', 'pole ve formuláři není nebo bylo přejmenováno (formulář DPD se přestavěl)');
 }
 
 // --- diagnostika -----------------------------------------------------------
@@ -342,10 +425,7 @@ async function fillDpd() {
   var chceDobirku = typeof d.cod === 'boolean' ? d.cod : (!!d.amount && parseFloat(d.amount) > 0);
 
   // Země jako první: její změna přepíná validace PSČ i nabídku služeb.
-  await fillField('země', {
-    sel: ['[name="receiver.countryCode"]', '[data-testid="receiver-country"]', '[name="receiver.country"]', '[name="country"]'],
-    label: /^(země|country)$/i,
-  }, zeme, { match: zeme === 'SK' ? /^(SK|Slovak)/i : /^(CZ|Czech|Česk)/i });
+  await nastavZemi(zeme);
 
   await fillField('jméno', {
     sel: ['[name="receiver.name"]', '[data-testid="receiver-address-name"]', '#receiverName', '[name="name"]'],
@@ -426,18 +506,7 @@ async function fillDpd() {
     }
   }
 
-  // Maskovací adresa odesílatele — ve staré verzi formuláře. Když tam není,
-  // nevadí, jen se to zapíše do protokolu.
-  var maska = document.querySelector('[name="useMarkedAddress"]');
-  if (maska && !maska.checked) {
-    maska.click();
-    var vyber = document.querySelector('[name="maskAddressName"]');
-    if (vyber && vyber.tagName === 'SELECT' && vyber.options.length > 1) {
-      vyber.selectedIndex = 1;
-      fire(vyber, ['change']);
-    }
-    zapis('maskovací adresa', 'zaškrtnuto', '');
-  }
+  await zaskrtniMaskovaciAdresu();
 
   window.__profiecuDpdReport = report;
   peLog('Hotovo. Přehled vyplnění:');
