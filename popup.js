@@ -55,6 +55,21 @@ document.getElementById('fillDpd').addEventListener('click', () => {
   });
 });
 
+// Diagnostika: vypíše do konzole DPD stránky soupis všech polí formuláře
+// (název, data-testid, id). Když DPD zase něco přejmenuje, je z toho hned
+// vidět co — bez hádání.
+document.getElementById('scanDpd').addEventListener('click', () => {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tab = tabs[0];
+    if (!tab?.url?.includes('shipping.dpdgroup.com')) {
+      showStatus('Otevřete DPD stránku a zkuste znovu', 'error');
+      return;
+    }
+    chrome.tabs.sendMessage(tab.id, { action: 'scanDpd' });
+    showStatus('Soupis polí je v konzoli DPD stránky (F12 → Console)', 'success');
+  });
+});
+
 document.getElementById('fillIdoklad').addEventListener('click', () => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const tab = tabs[0];
