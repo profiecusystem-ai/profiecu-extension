@@ -528,12 +528,16 @@ async function fillDpd() {
     label: /^(mobil|telefon|mobile|phone)/i,
   }, ocistiTelefon(d.phone));
 
-  // Hlavní služba: v nové verzi "services.mainService", ve staré
-  // "product.mainProductSelected". Vybíráme DPD Private, jinak první nabídku.
+  // Hlavní služba: stejný Chakra combobox jako země/dobírka/maskovací adresa —
+  // NE klasický <select>. Popisek "Hlavní služba" nesedí v <label> (byLabel ho
+  // proto nikdy nenašel), jen v p/span, takže se sem dřív čekalo naplno
+  // 20000 ms na neexistující pole a hlavní služba se nikdy nepřepnula na
+  // DPD Private. Krátká zkouška na klasický <select>/hidden input zůstává pro
+  // případ, že DPD formulář zase přestaví, ale hlavní cesta je teď combobox
+  // (otevriComboboxPoLabelu + vyběr položky "private" jako u ostatních polí).
   var sluzba = await waitField({
     sel: ['[name="services.mainService"]', '[name="product.mainProductSelected"]', '[data-testid="shipment-main-service"]'],
-    label: /(hlavní služba|main service)/i,
-  }, 20000);
+  }, 2000);
   if (sluzba && sluzba.tagName === 'SELECT') {
     var vybrano = selectOption(sluzba, '', /private/i);
     if (!vybrano) {
@@ -542,9 +546,15 @@ async function fillDpd() {
     }
     zapis('hlavní služba', vybrano ? 'vybráno' : 'VYBRAT RUČNĚ', sluzba.value);
   } else {
-    zapis('hlavní služba', sluzba ? 'VYBRAT RUČNĚ' : 'NENALEZENO', sluzba ? 'není to klasický výběr' : '');
+    var sluzbaOvladac = await otevriComboboxPoLabelu(/hlavn[ií]\s*slu[žz]b|main\s*service/i, 6000);
+    if (sluzbaOvladac) {
+      var vybranaSluzba = await vyberOptionVOtevrenemMenu(sluzbaOvladac, /private/i, 12);
+      zapis('hlavní služba', vybranaSluzba ? 'vybráno' : 'VYBRAT RUČNĚ', vybranaSluzba || 'v nabídce nebyla položka DPD Private');
+    } else {
+      zapis('hlavní služba', 'NENALEZENO', 'combobox hlavní služby se nenašel');
+    }
   }
-  await sleep(800);
+  await sleep(400);
 
   await zaskrtniDobirku(chceDobirku);
 
