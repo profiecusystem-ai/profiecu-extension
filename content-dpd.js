@@ -189,37 +189,55 @@ function selectOption(sel, value, matchRe) {
 }
 
 // --- země příjemce -----------------------------------------------------------
-// Nový formulář má zemi jako Chakra combobox, ne <select> — hodnotu jde
-// nastavit jen kliknutím v otevřené nabídce, ne zápisem do pole.
+// Živě ověřeno 14. 9. 2026: pole nemá name atribut (je to react-select text
+// input), jen id "react-select-receiver.countryCode-input" — a nikde u něj
+// není popisek „Země"/„Country" k nalezení (aktuální hodnota se zobrazí jako
+// prostý text vedle). `[id*=...]` je tu jediná spolehlivá stopa. Hodnotu jde
+// nastavit jen kliknutím a výběrem v otevřené nabídce, psaní do pole ji
+// vyfiltruje (stovky zemí), ale nevybere.
 async function nastavZemi(zeme) {
-  var matchRe = zeme === 'SK' ? /^(SK|Slovak)/i : /^(CZ|Czech|Česk)/i;
+  var matchRe = zeme === 'SK' ? /^(SK|Slovak|Slovensk)/i : /^(CZ|Czech|Česk)/i;
+  var hledej = zeme === 'SK' ? 'Slovensk' : 'Česk';
+
   var el = await waitField({
-    sel: ['[name="receiver.countryCode"]', '[data-testid="receiver-country"]', '[name="receiver.country"]', '[name="country"]'],
+    sel: [
+      '[id*="receiver.countryCode"]',
+      '[name="receiver.countryCode"]',
+      '[data-testid="receiver-country"]',
+      '[name="receiver.country"]',
+      '[name="country"]',
+    ],
     label: /^(země|country)$/i,
   }, 15000);
 
-  if (el && el.tagName === 'SELECT') {
+  if (!el) {
+    zapis('země', 'NENALEZENO', 'pole ve formuláři není');
+    return;
+  }
+
+  if (el.tagName === 'SELECT') {
     var ok = selectOption(el, zeme, matchRe);
     zapis('země', ok ? 'vyplněno' : 'NEVYPLNĚNO', ok ? el.value : 'v nabídce není žádná odpovídající položka');
     return;
   }
 
-  if (el) {
-    setVal(el, zeme);
-    await sleep(300);
-    if ((el.value || '').trim().toUpperCase() === zeme) {
-      zapis('země', 'vyplněno', el.value);
-      return;
-    }
-  }
-
-  var ovladac = await otevriComboboxPoLabelu(/^(země|country)$/i);
-  if (!ovladac) {
-    zapis('země', el ? 'NEUDRŽELO SE' : 'NENALEZENO', el ? 'hodnota se po zápisu vrátila zpět (Chakra combobox)' : 'pole ve formuláři není');
-    return;
-  }
-  var vybrano = await vyberOptionVOtevrenemMenu(matchRe, 12);
+  el.click();
+  await sleep(200);
+  setVal(el, hledej);
+  await sleep(400);
+  var vybrano = await vyberOptionVOtevrenemMenu(el, matchRe, 12);
   zapis('země', vybrano ? 'vyplněno' : 'VYBRAT RUČNĚ', vybrano || 'v nabídce nebyla odpovídající položka');
+}
+
+// --- telefon: předvolba je samostatné pole -----------------------------------
+// Živě ověřeno 14. 9. 2026: vedle textu na telefon je vlastní combobox s
+// předvolbou (+420/+421), skrytě napojený na receiver.mobileCode a předvyplněný
+// podle vybrané země. Když appka posílá číslo i s předvolbou ("+421900123456"),
+// DPD ji vidí dvakrát a odmítne to („number is too long for the prefix").
+function ocistiTelefon(telefon) {
+  var t = (telefon || '').replace(/[\s()-]/g, '');
+  t = t.replace(/^\+?(420|421)/, '');
+  return t;
 }
 
 // --- adresa: oddělení čísla popisného od ulice ------------------------------
@@ -254,28 +272,58 @@ function najdiCodChip() {
 // Chakra UI comboboxy (doplňkové služby, země, maskovací adresa) nejdou
 // vyplnit zápisem hodnoty — je potřeba kliknout na ovládací prvek a pak na
 // položku v otevřené nabídce. Sdílený pár funkcí pro všechny tři.
-async function otevriComboboxPoLabelu(labelRe) {
-  var kandidati = Array.prototype.slice.call(
-    document.querySelectorAll('[role="combobox"], [aria-haspopup="listbox"], [class*="multiSelect"], [class*="multi-select"], [class*="select__control"]')
-  );
-  var cil = kandidati.find(function (el) {
-    var kontejner = el.closest('div');
-    for (var d = 0; d < 4 && kontejner; d++, kontejner = kontejner.parentElement) {
-      if (labelRe.test(textOf(kontejner))) return true;
+async function otevriComboboxPoLabelu(labelRe, timeout) {
+  // Živě ověřeno 14. 9. 2026: hledání „N divů nad inputem" je křehké — u
+  // různých polí je popisek v různé hloubce (4 u dobírky, 6 u „Maskované
+  // jméno"), a jít dost hluboko na to druhé znamená trefit sousední pole ve
+  // společném kontejneru (stalo se to s „Adresa svozu"). Spolehlivější je jít
+  // opačně: najít přímo text popisku, a teprve z NĚJ sestoupit k inputu uvnitř
+  // stejného chakra-form-control — stejný princip jako byLabel() pro klasická pole.
+  //
+  // „Maskované jméno" se navíc v DOM objeví až s odstupem PO kliknutí na
+  // checkbox (podmíněné vykreslení) — jeden pevný sleep(300) to minul, proto
+  // se hledání opakuje, dokud pole nenaběhne, ne jen jednou.
+  var deadline = Date.now() + (timeout || 6000);
+  var cil = null;
+  while (!cil && Date.now() < deadline) {
+    var uzly = Array.prototype.slice.call(document.querySelectorAll('label, p, span'));
+    var popisek = uzly.find(function (n) {
+      return n.children.length === 0 && labelRe.test((n.textContent || '').trim());
+    });
+    if (popisek) {
+      var kontejner = popisek.closest('[class*="chakra-form-control"]') || popisek.parentElement;
+      for (var d = 0; d < 6 && kontejner && !cil; d++, kontejner = kontejner.parentElement) {
+        cil = kontejner.querySelector('[role="combobox"], [aria-haspopup="listbox"]');
+      }
     }
-    return false;
-  });
+    if (!cil) await sleep(200);
+  }
   if (!cil) return null;
-  cil.click();
+  // Živě ověřeno 14. 9. 2026: react-select nabídka se klikem na vstup
+  // NEOTEVŘE (žádná reakce, aria-expanded zůstane false) — otevře ji jen
+  // klávesa ArrowDown. Bez tohohle kroku byla „Dobírka" i „Maskované jméno"
+  // navždy nedosažitelné, i když je selektor správně našel.
+  cil.focus();
+  try { cil.click(); } catch (e) { /* nevadí */ }
+  await sleep(150);
+  cil.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 }));
   await sleep(400);
   return cil;
 }
 
-async function vyberOptionVOtevrenemMenu(matchRe, pokusu) {
+// Živě ověřeno 14. 9. 2026: hledat položku napříč CELOU stránkou
+// (`[role="option"], li, ...`) je nebezpečné — na téhle stránce má i horní
+// navigace `<li>` prvky ("Přehled zásilek"), a s obecným regexem typu /./ u
+// „Maskované jméno" (jediná položka, název neznáme dopředu) skript omylem
+// kliknul na položku menu, ne do otevřené nabídky. React-select ale položky
+// pojmenovává `<id-comboboxu>-option-N`, tedy stejným prefixem jako samotný
+// input (`<id-comboboxu>-input`) — hledání se proto omezí jen na potomky
+// TOHOTO konkrétního comboboxu, ne na celou stránku.
+async function vyberOptionVOtevrenemMenu(cil, matchRe, pokusu) {
+  var prefix = (cil && cil.id) ? cil.id.replace(/-input$/, '') : null;
   for (var pokus = 0; pokus < (pokusu || 12); pokus++) {
-    var polozky = Array.prototype.slice.call(
-      document.querySelectorAll('[role="option"], li, [class*="option"], [class*="menuitem"]')
-    );
+    var polozky = Array.prototype.slice.call(document.querySelectorAll('[role="option"]'));
+    if (prefix) polozky = polozky.filter(function (el) { return el.id && el.id.indexOf(prefix) === 0; });
     var hit = polozky.find(function (el) {
       return matchRe.test(textOf(el)) && el.offsetParent !== null;
     });
@@ -327,7 +375,7 @@ async function zaskrtniDobirku(chceme) {
     return false;
   }
 
-  var hit = await vyberOptionVOtevrenemMenu(COD_RE, 12);
+  var hit = await vyberOptionVOtevrenemMenu(ovladac, COD_RE, 12);
   if (hit) {
     zapis('dobírka', najdiCodChip() ? 'zaškrtnuto' : 'ZKONTROLOVAT RUČNĚ', hit);
     return true;
@@ -337,39 +385,50 @@ async function zaskrtniDobirku(chceme) {
 }
 
 // --- maskovací adresa odesílatele -------------------------------------------
-// `[name="useMarkedAddress"]` byl název ze staré verze formuláře a po
-// přestavbě 14. 9. 2026 nejspíš neexistuje — proto se nikdy nehlásil ani jako
-// NENALEZENO (mlčel stejně jako úspěch). Hledáme napřed jako checkbox pod
-// popiskem, pak jako Chakra combobox, a výsledek se vždycky zapíše.
+// `[name="useMarkedAddress"]` byl název ze staré verze formuláře. Živě
+// ověřeno 14. 9. 2026: nové jméno je "maskedAddress.applyMaskedAddress" a je
+// to normální checkbox (na rozdíl od země) — jen ho starý selektor nenašel a
+// mlčel stejně jako úspěch, protože chyběl zápis do NENALEZENO.
+//
+// Zaškrtnutím se navíc odemkne NOVÉ povinné pole „Maskované jméno" (react-select
+// s jedinou položkou — název firmy, pod kterým se zásilka maskuje). Bez
+// vyplnění by formulář nešlo odeslat, i když checkbox sám sedí.
 async function zaskrtniMaskovaciAdresu() {
-  var checkbox = document.querySelector('[name="useMarkedAddress"]') ||
-    document.querySelector('[name="senderInformation.useMaskedAddress"]') ||
+  var checkbox = document.querySelector('[name="maskedAddress.applyMaskedAddress"]') ||
+    document.querySelector('[name="useMarkedAddress"]') ||
     byLabel(/masko/i);
 
+  var checknuto = false;
   if (checkbox && checkbox.type === 'checkbox') {
     if (checkbox.checked) {
       zapis('maskovací adresa', 'v pořádku', 'byla zaškrtnutá už předtím');
-      return;
+      checknuto = true;
+    } else {
+      checkbox.click();
+      await sleep(300);
+      zapis('maskovací adresa', checkbox.checked ? 'zaškrtnuto' : 'ZKONTROLOVAT RUČNĚ', '');
+      checknuto = checkbox.checked;
     }
-    checkbox.click();
-    await sleep(300);
-    var vyber = document.querySelector('[name="maskAddressName"]');
-    if (vyber && vyber.tagName === 'SELECT' && vyber.options.length > 1) {
-      vyber.selectedIndex = 1;
-      fire(vyber, ['change']);
+  } else {
+    var ovladac = await otevriComboboxPoLabelu(/masko/i);
+    if (ovladac) {
+      var vysledek = await vyberOptionVOtevrenemMenu(ovladac, /masko/i, 6);
+      zapis('maskovací adresa', vysledek ? 'zaškrtnuto' : 'ZAŠKRTNOUT RUČNĚ', vysledek || 'položka v otevřené nabídce nenalezena');
+      checknuto = !!vysledek;
+    } else {
+      zapis('maskovací adresa', 'NENALEZENO', 'pole ve formuláři není nebo bylo přejmenováno (formulář DPD se přestavěl)');
     }
-    zapis('maskovací adresa', checkbox.checked ? 'zaškrtnuto' : 'ZKONTROLOVAT RUČNĚ', '');
-    return;
   }
 
-  var ovladac = await otevriComboboxPoLabelu(/masko/i);
-  if (ovladac) {
-    var vysledek = await vyberOptionVOtevrenemMenu(/masko/i, 6);
-    zapis('maskovací adresa', vysledek ? 'zaškrtnuto' : 'ZAŠKRTNOUT RUČNĚ', vysledek || 'položka v otevřené nabídce nenalezena');
+  if (!checknuto) return;
+
+  var jmenoOvladac = await otevriComboboxPoLabelu(/maskovan[eé] jm[eé]no|masked name/i);
+  if (!jmenoOvladac) {
+    zapis('maskované jméno', 'ZKONTROLOVAT RUČNĚ', 'nabídka se po zaškrtnutí neobjevila');
     return;
   }
-
-  zapis('maskovací adresa', 'NENALEZENO', 'pole ve formuláři není nebo bylo přejmenováno (formulář DPD se přestavěl)');
+  var vybranoJmeno = await vyberOptionVOtevrenemMenu(jmenoOvladac, /./, 8);
+  zapis('maskované jméno', vybranoJmeno ? 'vyplněno' : 'VYBRAT RUČNĚ', vybranoJmeno || 'v otevřené nabídce nebyla žádná položka');
 }
 
 // --- diagnostika -----------------------------------------------------------
@@ -444,15 +503,20 @@ async function fillDpd() {
     label: /^(město|city|town)/i,
   }, d.city, { volne: true });
 
-  await fillField('ulice', {
+  // Živě ověřeno 14. 9. 2026: pole se jmenuje „Ulice a číslo popisné" a je
+  // POVINNÉ — DPD ho chce jako jeden řetězec s číslem uvnitř, ne holou ulici.
+  // Samostatné „Číslo domu" je navíc a NEpovinné (appka ho dřív brala jako
+  // hlavní povinné pole, ale živý formulář to popírá) — vyplní se jen jako bonus.
+  var uliceSCislem = adresa.houseNo ? (adresa.street + ' ' + adresa.houseNo) : adresa.street;
+  await fillField('ulice a číslo popisné', {
     sel: ['[name="receiver.streetName"]', '[data-testid="receiver-street"]', '[name="streetName"]'],
     label: /^(ulice|street)/i,
-  }, adresa.street);
+  }, uliceSCislem);
 
-  await fillField('číslo popisné', {
+  await fillField('číslo popisné (vlastní pole)', {
     sel: ['[name="receiver.houseNo"]', '[data-testid="receiver-house-no"]', '[name="houseNo"]'],
     label: /(číslo popisné|house no)/i,
-  }, adresa.houseNo);
+  }, adresa.houseNo, { nepovinne: true });
 
   await fillField('e-mail', {
     sel: ['[name="receiver.email"]', '[data-testid="receiver-email"]', '[name="email"]'],
@@ -462,7 +526,7 @@ async function fillDpd() {
   await fillField('telefon', {
     sel: ['[name="receiver.mobileNumber"]', '[data-testid="receiver-mobile"]', '[name="receiver.mobile"]', '[name="mobileNumber"]'],
     label: /^(mobil|telefon|mobile|phone)/i,
-  }, d.phone);
+  }, ocistiTelefon(d.phone));
 
   // Hlavní služba: v nové verzi "services.mainService", ve staré
   // "product.mainProductSelected". Vybíráme DPD Private, jinak první nabídku.
