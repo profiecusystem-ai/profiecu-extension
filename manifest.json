@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ProfiECU Autofill",
-  "version": "3.3",
+  "version": "3.4",
   "description": "Automatické vyplnění DPD a iDoklad formulářů z ProfiECU",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [

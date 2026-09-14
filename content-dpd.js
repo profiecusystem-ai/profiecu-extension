@@ -7,6 +7,28 @@
  * Stará verze proto nenašla skoro nic — a co hůř, běžela jako jeden řetěz
  * promisů, takže první nenalezená sekce shodila i všechny kroky za ní.
  *
+ * v3.4 (14. 9. 2026, živě ověřeno přes chrome-devtools MCP na reálném
+ * formuláři, CZ i SK): tři další opravy nad v3.3 —
+ *   1. Maskovací adresa svozu/odesílatele je v DOM hned od začátku (je to
+ *      první sekce formuláře, nezávislá na poli příjemce) — vyplňuje se teď
+ *      jako úplně PRVNÍ krok, ne až na konci. Majitel na ni tak nečeká za
+ *      dobírkou a kontaktními poli.
+ *   2. Detekce "je dobírka už zaškrtnutá" hledala CSS třídy "tag"/"chip"/
+ *      "multi" — živý Chakra formulář je nemá (jen hashované emotion třídy
+ *      typu "css-1ny2kle"), takže to nikdy nic nenašlo. Nahrazeno čtením
+ *      textu z kontejneru comboboxu (`cil.closest('[class*=chakra-form-control]')`),
+ *      což je stejné místo, kde DPD zobrazuje "Dobírka, Avizace o doručení"
+ *      jako obyčejný text. Odebrání dobírky navíc nehledá žádné tlačítko
+ *      "zavřít" (živě ověřeno, že žádné takové u vybrané položky není) —
+ *      react-select je multiselect, kde klik na už vybranou položku v
+ *      otevřené nabídce funguje jako přepínač (zapne/vypne), takže zaškrtnutí
+ *      i odškrtnutí dobírky je teď STEJNÁ akce.
+ *   3. Měna dobírky se u SK zásilek mění na EUR automaticky (DPD to počítá
+ *      samo podle země příjemce) — dřív se skript pokoušel zapsat hodnotu
+ *      přímo do skrytého inputu `services.additionalServices.cod.currency`,
+ *      což je zbytečné (samo se to nastaví správně) a riskantní (obchází to
+ *      react-hook-form kontrolu nad polem). Celý krok smazán.
+ *
  * Tři zásady, na kterých tenhle skript stojí:
  *   1. Každé pole se hledá seznamem kandidátů: nové názvy → staré názvy →
  *      data-testid → text popisku. Přežije tedy i další přejmenování.
@@ -260,19 +282,13 @@ function textOf(el) {
 
 var COD_RE = /dob[ií]rk|cash on delivery|(^|\W)cod(\W|$)/i;
 
-function najdiCodChip() {
-  // Už vybraná služba se zobrazuje jako štítek uvnitř multiselectu.
-  var boxy = document.querySelectorAll('[class*="tag"], [class*="chip"], [class*="multi"] [class*="value"]');
-  for (var i = 0; i < boxy.length; i++) {
-    if (COD_RE.test(textOf(boxy[i]))) return boxy[i];
-  }
-  return null;
-}
-
-// Chakra UI comboboxy (doplňkové služby, země, maskovací adresa) nejdou
-// vyplnit zápisem hodnoty — je potřeba kliknout na ovládací prvek a pak na
-// položku v otevřené nabídce. Sdílený pár funkcí pro všechny tři.
-async function otevriComboboxPoLabelu(labelRe, timeout) {
+// Chakra UI comboboxy (doplňkové služby, hlavní služba, země, maskovací
+// adresa) nejdou vyplnit zápisem hodnoty — je potřeba kliknout na ovládací
+// prvek a pak na položku v otevřené nabídce. Sdílené funkce pro všechny čtyři,
+// rozdělené na "najít" (bez klikání — pro zjištění aktuálního stavu) a
+// "otevřít" (klikne a otevře nabídku), aby šlo přečíst, co je vybrané teď,
+// aniž by se tím nabídka musela nejdřív otevírat.
+async function najdiCombobox(labelRe, timeout) {
   // Živě ověřeno 14. 9. 2026: hledání „N divů nad inputem" je křehké — u
   // různých polí je popisek v různé hloubce (4 u dobírky, 6 u „Maskované
   // jméno"), a jít dost hluboko na to druhé znamená trefit sousední pole ve
@@ -284,21 +300,24 @@ async function otevriComboboxPoLabelu(labelRe, timeout) {
   // checkbox (podmíněné vykreslení) — jeden pevný sleep(300) to minul, proto
   // se hledání opakuje, dokud pole nenaběhne, ne jen jednou.
   var deadline = Date.now() + (timeout || 6000);
-  var cil = null;
-  while (!cil && Date.now() < deadline) {
+  while (Date.now() < deadline) {
     var uzly = Array.prototype.slice.call(document.querySelectorAll('label, p, span'));
     var popisek = uzly.find(function (n) {
       return n.children.length === 0 && labelRe.test((n.textContent || '').trim());
     });
     if (popisek) {
       var kontejner = popisek.closest('[class*="chakra-form-control"]') || popisek.parentElement;
-      for (var d = 0; d < 6 && kontejner && !cil; d++, kontejner = kontejner.parentElement) {
-        cil = kontejner.querySelector('[role="combobox"], [aria-haspopup="listbox"]');
+      for (var d = 0; d < 6 && kontejner; d++, kontejner = kontejner.parentElement) {
+        var cil = kontejner.querySelector('[role="combobox"], [aria-haspopup="listbox"]');
+        if (cil) return cil;
       }
     }
-    if (!cil) await sleep(200);
+    await sleep(200);
   }
-  if (!cil) return null;
+  return null;
+}
+
+async function otevriCombobox(cil) {
   // Živě ověřeno 14. 9. 2026: react-select nabídka se klikem na vstup
   // NEOTEVŘE (žádná reakce, aria-expanded zůstane false) — otevře ji jen
   // klávesa ArrowDown. Bez tohohle kroku byla „Dobírka" i „Maskované jméno"
@@ -308,7 +327,25 @@ async function otevriComboboxPoLabelu(labelRe, timeout) {
   await sleep(150);
   cil.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 }));
   await sleep(400);
+}
+
+async function otevriComboboxPoLabelu(labelRe, timeout) {
+  var cil = await najdiCombobox(labelRe, timeout);
+  if (!cil) return null;
+  await otevriCombobox(cil);
   return cil;
+}
+
+// Živě ověřeno 14. 9. 2026: dokud je nabídka zavřená, DPD zobrazuje aktuálně
+// vybrané položky jako obyčejný text uvnitř stejného chakra-form-control
+// kontejneru, do kterého vede popisek ("Dobírka, Avizace o doručení,
+// Doplňkové služby" nebo u jednovýběru "DPD Private, VYBERTE SLUŽBU..."). Číst
+// se to musí PŘED otevřením nabídky — jakmile se otevře, kontejner se zaplní
+// a11y textem pro čtečky obrazovky ("option , selected. X, N of M...") a
+// hledaná hodnota v něm zmizí v šumu.
+function textStavuComboboxu(cil) {
+  var kontejner = cil.closest('[class*="chakra-form-control"]');
+  return kontejner ? textOf(kontejner) : '';
 }
 
 // Živě ověřeno 14. 9. 2026: hledat položku napříč CELOU stránkou
@@ -337,51 +374,41 @@ async function vyberOptionVOtevrenemMenu(cil, matchRe, pokusu) {
   return null;
 }
 
-async function otevriDoplnkoveSluzby() {
+async function otevriDoplnkoveSluzby(timeout) {
   var box = await waitAny([
     '[name="services.additionalProducts"]',
     '#shipment-services-information',
     '#shipment-additional-services',
-  ], 20000);
+  ], timeout || 10000);
   if (!box) return null;
-  return otevriComboboxPoLabelu(/doplňkov|additional service/i);
+  return najdiCombobox(/doplňkov|additional service/i, 6000);
 }
 
+// react-select multiselect: klik na už vybranou položku v otevřené nabídce
+// ji odebere, klik na nevybranou ji přidá — zaškrtnutí i odškrtnutí dobírky
+// je proto STEJNÁ akce (žádné samostatné tlačítko „zavřít" u vybrané položky
+// v živém formuláři není, viz hlavičkový komentář v3.4).
 async function zaskrtniDobirku(chceme) {
-  var chip = najdiCodChip();
-  if (!chceme) {
-    if (!chip) {
-      zapis('dobírka', 'v pořádku', 'zásilka je bez dobírky a žádná nastavená nebyla');
-      return false;
-    }
-    var zrus = chip.querySelector('button, [role="button"], [class*="close"], [class*="remove"]');
-    if (zrus) {
-      zrus.click();
-      zapis('dobírka', 'odebráno', 'zásilka je bez dobírky (zaplaceno předem / reklamace)');
-      return false;
-    }
-    zapis('dobírka', 'ZKONTROLOVAT RUČNĚ', 'dobírka je nastavená, ale nešla odebrat');
+  var cil = await otevriDoplnkoveSluzby();
+  if (!cil) {
+    zapis('dobírka', chceme ? 'ZAŠKRTNOUT RUČNĚ' : 'NENALEZENO', 'nabídka doplňkových služeb se nenašla');
     return false;
   }
 
-  if (chip) {
-    zapis('dobírka', 'v pořádku', 'byla zaškrtnutá už předtím');
-    return true;
+  var jeVybrana = COD_RE.test(textStavuComboboxu(cil));
+  if (jeVybrana === chceme) {
+    zapis('dobírka', 'v pořádku', chceme ? 'byla zaškrtnutá už předtím' : 'zásilka je bez dobírky a žádná nastavená nebyla');
+    return chceme;
   }
 
-  var ovladac = await otevriDoplnkoveSluzby();
-  if (!ovladac) {
-    zapis('dobírka', 'ZAŠKRTNOUT RUČNĚ', 'nabídka doplňkových služeb se nenašla');
-    return false;
+  await otevriCombobox(cil);
+  var hit = await vyberOptionVOtevrenemMenu(cil, COD_RE, 12);
+  if (!hit) {
+    zapis('dobírka', chceme ? 'ZAŠKRTNOUT RUČNĚ' : 'ZKONTROLOVAT RUČNĚ', 'v nabídce nebyla položka Dobírka');
+    return jeVybrana;
   }
-
-  var hit = await vyberOptionVOtevrenemMenu(ovladac, COD_RE, 12);
-  if (hit) {
-    zapis('dobírka', najdiCodChip() ? 'zaškrtnuto' : 'ZKONTROLOVAT RUČNĚ', hit);
-    return true;
-  }
-  zapis('dobírka', 'ZAŠKRTNOUT RUČNĚ', 'v nabídce nebyla položka Dobírka');
-  return false;
+  zapis('dobírka', chceme ? 'zaškrtnuto' : 'odebráno', hit);
+  return chceme;
 }
 
 // --- maskovací adresa odesílatele -------------------------------------------
@@ -393,10 +420,16 @@ async function zaskrtniDobirku(chceme) {
 // Zaškrtnutím se navíc odemkne NOVÉ povinné pole „Maskované jméno" (react-select
 // s jedinou položkou — název firmy, pod kterým se zásilka maskuje). Bez
 // vyplnění by formulář nešlo odeslat, i když checkbox sám sedí.
+//
+// v3.4: běží jako úplně první krok celého autofillu (sekce odesílatele je
+// v DOM dřív než pole příjemce) — proto čeká na checkbox sama (`waitField`),
+// místo aby se spoléhala na to, že formulář už je dávno načtený z předchozích
+// kroků, jako tomu bylo, dokud běžela jako poslední.
 async function zaskrtniMaskovaciAdresu() {
-  var checkbox = document.querySelector('[name="maskedAddress.applyMaskedAddress"]') ||
-    document.querySelector('[name="useMarkedAddress"]') ||
-    byLabel(/masko/i);
+  var checkbox = await waitField({
+    sel: ['[name="maskedAddress.applyMaskedAddress"]', '[name="useMarkedAddress"]'],
+    label: /masko/i,
+  }, 10000);
 
   var checknuto = false;
   if (checkbox && checkbox.type === 'checkbox') {
@@ -467,6 +500,12 @@ async function fillDpd() {
   }
   report = {};
 
+  // Maskovací adresa jde jako úplně první krok — je to sekce odesílatele,
+  // v DOM existuje dřív než pole příjemce, a majitel na ni dřív musel čekat
+  // až za kontaktními poli a dobírkou. Vlastní waitField uvnitř funkce nahrazuje
+  // čekání na `koren`, které by tu jinak muselo běžet první.
+  await zaskrtniMaskovaciAdresu();
+
   var koren = await waitAny([
     '[name="receiver.name"]',
     '#shipment-receiver-information',
@@ -474,7 +513,7 @@ async function fillDpd() {
     '[name="name"]',
   ], 30000);
   if (!koren) {
-    peWarn('formulář zásilky se nenačetl do 30 s — autofill se nespustil');
+    peWarn('formulář zásilky se nenačetl do 30 s — zbytek autofillu se nespustil (maskovací adresa už proběhla)');
     scan();
     return;
   }
@@ -559,7 +598,7 @@ async function fillDpd() {
   await zaskrtniDobirku(chceDobirku);
 
   if (chceDobirku) {
-    await sleep(600);
+    await sleep(400);
     await fillField('částka dobírky', {
       sel: [
         '[name="services.additionalServices.cod.amount"]',
@@ -570,17 +609,11 @@ async function fillDpd() {
       label: /(částka dobírky|cod amount)/i,
     }, d.amount, { timeout: 8000 });
 
-    // Měnu řešíme jen u slovenských zásilek (EUR). U českých je CZK výchozí
-    // a sahat na ni je zbytečné riziko.
-    if (d.currency && d.currency !== 'CZK') {
-      await fillField('měna dobírky', {
-        sel: ['[name="services.additionalServices.cod.currency"]', '[name="codCurrency"]'],
-        label: /(měna|currency)/i,
-      }, d.currency, { timeout: 4000, match: new RegExp(d.currency, 'i'), nepovinne: true });
-    }
+    // Měnu NEřešíme — živě ověřeno 14. 9. 2026 na SK zásilce: DPD ji přepne
+    // na EUR samo podle země příjemce, jakmile je vybraná dobírka. Ruční zápis
+    // do skrytého pole `cod.currency` byl zbytečný krok navíc (a obcházel
+    // react-hook-form, který si pole řídí samo).
   }
-
-  await zaskrtniMaskovaciAdresu();
 
   window.__profiecuDpdReport = report;
   peLog('Hotovo. Přehled vyplnění:');

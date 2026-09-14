@@ -42,12 +42,39 @@ Oprava: hlavní služba teď jde stejnou cestou jako ostatní comboboxy
 krátká zkouška na klasický `<select>` zůstává jen jako fallback (2000 ms
 místo 20000 ms). Zatím NEOVĚŘENO živě — čeká na test u reálné objednávky.
 
-## Co teď funguje ✅ (živě ověřeno k v3.2, hlavní služba čeká na ověření v3.3)
+## Verze 3.4 (14. 9. 2026) — kompletní živé ověření (CZ i SK), maskovací adresa jde první
+
+Majitel: „prvně se vybere maskovací adresa poté až vše další… udělej to nejrychlejší
+možnou verzi… dávej pozor na Slovensko“. Testováno přes chrome-devtools MCP na
+reálném formuláři (bez odeslání objednávky), dva plné běhy:
+- **SK, s dobírkou** (350 Kč→EUR automaticky, DPD Private, maskovací adresa) —
+  všech 13 kroků `vyplněno`/`vybráno`/`zaškrtnuto`, **12,2 s celkem**.
+- **CZ, bez dobírky** (prepaid scénář) — dobírka správně zůstala nezaškrtnutá
+  bez zbytečného otevírání comboboxu, **6,7 s celkem**.
+
+Tři opravy nad v3.3:
+1. **Maskovací adresa běží jako úplně první krok** (dřív poslední) — je to
+   sekce Odesílatele, v DOM existuje dřív než pole příjemce, takže na ni nic
+   nezávisí. `zaskrtniMaskovaciAdresu()` teď sama čeká na checkbox (`waitField`),
+   protože se dřív spoléhala na to, že formulář je už dávno načtený.
+2. **Detekce „je dobírka zaškrtnutá" byla mrtvá** — hledala CSS třídy
+   `tag`/`chip`/`multi`, které živý Chakra formulář vůbec nepoužívá (jen
+   hashované `css-xxxxx` třídy). Nahrazeno čtením textu z kontejneru comboboxu
+   (`Dobírka, Avizace o doručení, Doplňkové služby` se čte jako obyčejný text,
+   dokud je nabídka zavřená). Odebrání dobírky navíc nehledá žádné tlačítko
+   „zavřít" (živě ověřeno, že žádné u vybrané položky není) — react-select je
+   multiselect, klik na už vybranou položku ji odebere. Zaškrtnutí i odškrtnutí
+   je teď stejná akce.
+3. **Měna dobírky se u SK řeší sama** — živě ověřeno, že DPD po výběru dobírky
+   sama přepne `cod.currency` na EUR podle země příjemce. Ruční zápis do
+   skrytého pole byl zbytečný a riskantní (obcházel react-hook-form). Smazáno.
+
+## Co teď funguje ✅ (živě ověřeno v3.4, CZ i SK, s dobírkou i bez)
 - Jméno, země, PSČ, město, ulice, **číslo popisné**, e-mail, telefon
-- Hlavní služba (vybere DPD Private, jinak první nabídku) — **v3.3, neověřeno živě**
-- Dobírka: zaškrtne, u zásilky zdarma naopak odškrtne zděděnou dobírku
-- Částka dobírky, měna u slovenských zásilek
-- Maskovací adresa odesílatele (pokud je ve formuláři)
+- Hlavní služba — vybere DPD Private
+- Dobírka: zaškrtne/odškrtne přesně podle stavu appky, žádné zbytečné kliky
+- Částka dobírky (měnu řeší DPD samo)
+- Maskovací adresa odesílatele + maskované jméno — jako první krok
 
 ## Jak je to postavené
 1. Každé pole se hledá seznamem kandidátů: nové názvy → staré názvy →
