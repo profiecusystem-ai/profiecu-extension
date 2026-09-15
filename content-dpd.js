@@ -262,16 +262,22 @@ function ocistiTelefon(telefon) {
   return t;
 }
 
-// --- adresa: oddělení čísla popisného od ulice ------------------------------
-// Nový formulář má „Číslo popisné" jako samostatné (a často povinné) pole.
-// Appka posílá ulici i s číslem, takže když houseNo nedorazí, urveme ho tady.
-function splitStreet(street, houseNo) {
-  var s = (street || '').trim();
+// --- adresa: ulice a číslo popisné jdou do JEDNOHO pole ---------------------
+// Rozhodnutí majitele (15. 9. 2026): DPD ukazovalo číslo popisné dvakrát —
+// jednou v „Ulice a číslo popisné" a znovu v samostatném „Číslo domu".
+// Od teď se samostatné „Číslo domu" NEVYPLŇUJE NIKDY a zůstává prázdné;
+// všechno jde do jedné povinné kolonky („Vozokany 14").
+// Appka většinou posílá ulici i s číslem pohromadě; když dorazí číslo zvlášť,
+// jen se připojí na konec — a to pouze pokud tam ještě není.
+function spojUliciACislo(street, houseNo) {
+  var s = (street || '').trim().replace(/[\s,]+$/, '');
   var h = (houseNo || '').trim();
-  if (h) return { street: s, houseNo: h };
-  var m = s.match(/^(.*?)[\s,]+(\d[\da-zA-Z]*(?:\s*\/\s*\d[\da-zA-Z]*)?)$/);
-  if (m && m[1].trim()) return { street: m[1].trim(), houseNo: m[2].replace(/\s+/g, '') };
-  return { street: s, houseNo: '' };
+  if (!h) return s;
+  if (!s) return h;
+  // už je číslo na konci ulice? („Vozokany 14" + houseNo „14") → nepřidávat
+  var konec = s.match(/(\d[\da-zA-Z]*(?:\s*\/\s*\d[\da-zA-Z]*)?)$/);
+  if (konec && konec[1].replace(/\s+/g, '').toLowerCase() === h.replace(/\s+/g, '').toLowerCase()) return s;
+  return s + ' ' + h;
 }
 
 // --- dobírka (doplňková služba) --------------------------------------------
@@ -518,7 +524,7 @@ async function fillDpd() {
     return;
   }
 
-  var adresa = splitStreet(d.street, d.houseNo);
+  var uliceSCislem = spojUliciACislo(d.street, d.houseNo);
   var zeme = d.country || 'CZ';
   var chceDobirku = typeof d.cod === 'boolean' ? d.cod : (!!d.amount && parseFloat(d.amount) > 0);
 
@@ -544,18 +550,12 @@ async function fillDpd() {
 
   // Živě ověřeno 14. 9. 2026: pole se jmenuje „Ulice a číslo popisné" a je
   // POVINNÉ — DPD ho chce jako jeden řetězec s číslem uvnitř, ne holou ulici.
-  // Samostatné „Číslo domu" je navíc a NEpovinné (appka ho dřív brala jako
-  // hlavní povinné pole, ale živý formulář to popírá) — vyplní se jen jako bonus.
-  var uliceSCislem = adresa.houseNo ? (adresa.street + ' ' + adresa.houseNo) : adresa.street;
+  // Samostatné „Číslo domu" se od 15. 9. 2026 ZÁMĚRNĚ NEVYPLŇUJE (pokyn majitele,
+  // jinak je číslo na štítku dvakrát). Povinné není, prázdné nikomu nevadí.
   await fillField('ulice a číslo popisné', {
     sel: ['[name="receiver.streetName"]', '[data-testid="receiver-street"]', '[name="streetName"]'],
     label: /^(ulice|street)/i,
   }, uliceSCislem);
-
-  await fillField('číslo popisné (vlastní pole)', {
-    sel: ['[name="receiver.houseNo"]', '[data-testid="receiver-house-no"]', '[name="houseNo"]'],
-    label: /(číslo popisné|house no)/i,
-  }, adresa.houseNo, { nepovinne: true });
 
   await fillField('e-mail', {
     sel: ['[name="receiver.email"]', '[data-testid="receiver-email"]', '[name="email"]'],
