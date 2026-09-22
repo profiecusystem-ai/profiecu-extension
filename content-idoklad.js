@@ -127,20 +127,39 @@
       if (!tmplDropdown) {
         console.warn('[iDoklad] Template dropdown not found, skipping step 1');
       } else {
-        console.log('[iDoklad] Step 1a: opening template dropdown');
-        await trulyOpenDropdown(tmplDropdown);
-        await waitForElObserver('.k-list-item', 3000).catch(function () {});
-        const items = Array.from(document.querySelectorAll('.k-list-item'));
-        const realTemplate = items.find(function (el) {
-          const text = el.textContent.trim();
-          return text !== '' && text !== 'Bez šablony';
-        });
+        // 22. 9. 2026, 3. kolo: existence uzlu [data-ui-id="csw-template"] jen
+        // znamená, že React ho vykreslil — Kendo si na něj ještě může navěsit
+        // click handler o zlomek sekundy později. Jeden pokus o otevření pak
+        // dopadne na "úspěšně" (žádná JS chyba), ale seznam se nikdy neobjeví,
+        // waitForElObserver vyprší, krok se tiše přeskočí a formulář se stejně
+        // doplní dál (přesně to uživatel hlásil: vyplní se, šablona neklikne).
+        // Živě ověřeno mimo rozšíření fungovalo, protože tam už byl widget
+        // dávno hydratovaný. Oprava: až 3 pokusy s rostoucí prodlevou místo
+        // jednoho — první neúspěšný klik nic nerozbije, jen se zopakuje.
+        let realTemplate = null;
+        for (let attempt = 1; attempt <= 3 && !realTemplate; attempt++) {
+          console.log('[iDoklad] Step 1a: opening template dropdown, attempt', attempt);
+          await trulyOpenDropdown(tmplDropdown);
+          realTemplate = await waitForElObserver('.k-list-item', 1500)
+            .then(function () {
+              const items = Array.from(document.querySelectorAll('.k-list-item'));
+              return items.find(function (el) {
+                const text = el.textContent.trim();
+                return text !== '' && text !== 'Bez šablony';
+              }) || null;
+            })
+            .catch(function () { return null; });
+          if (!realTemplate) {
+            console.warn('[iDoklad] Step 1a attempt ' + attempt + ': list did not open, retrying');
+            await delay(400 * attempt);
+          }
+        }
         if (realTemplate) {
           console.log('[iDoklad] Step 1b: clicking template', realTemplate.textContent.trim());
           await trulyClickOption(realTemplate);
           await delay(800);
         } else {
-          console.warn('[iDoklad] No real template option found (only "Bez šablony"?)');
+          console.warn('[iDoklad] No real template option found after 3 attempts (only "Bez šablony"?)');
         }
       }
 
