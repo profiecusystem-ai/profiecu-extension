@@ -112,10 +112,17 @@
     try {
       console.log('[iDoklad] Starting autofill with payload', payload);
 
-      // Step 1: Select "CAR ELE" template
+      // Step 1: Select the invoice template
       // Formulář se vykresluje asynchronně (SPA) — jednorázový querySelector hned
       // po startu skriptu často narazí na prázdný DOM. waitForEl počká, než se
       // prvek objeví, místo aby to vzdal na první pokus.
+      //
+      // 22. 9. 2026: šablona "CAR ELE" (stav z dubna) v účtu už neexistuje —
+      // živě ověřeno, že dropdown teď nabízí jen "Bez šablony" (výchozí
+      // placeholder) a jednu skutečnou šablonu jménem "PROFIECU.CZ". Napevno
+      // zadané jméno je křehké (příští přejmenování by tenhle krok zase potichu
+      // shodilo) — místo přesné shody bere skript první položku, která NENÍ
+      // "Bez šablony". Funguje to, dokud je v účtu jen jedna reálná šablona.
       const tmplDropdown = await waitForEl('[data-ui-id="csw-template"]', 6000).catch(function () { return null; });
       if (!tmplDropdown) {
         console.warn('[iDoklad] Template dropdown not found, skipping step 1');
@@ -124,15 +131,16 @@
         await trulyOpenDropdown(tmplDropdown);
         await waitForElObserver('.k-list-item', 3000).catch(function () {});
         const items = Array.from(document.querySelectorAll('.k-list-item'));
-        const carEle = items.find(function (el) {
-          return el.textContent.trim() === 'CAR ELE';
+        const realTemplate = items.find(function (el) {
+          const text = el.textContent.trim();
+          return text !== '' && text !== 'Bez šablony';
         });
-        if (carEle) {
-          console.log('[iDoklad] Step 1b: clicking CAR ELE');
-          await trulyClickOption(carEle);
+        if (realTemplate) {
+          console.log('[iDoklad] Step 1b: clicking template', realTemplate.textContent.trim());
+          await trulyClickOption(realTemplate);
           await delay(800);
         } else {
-          console.warn('[iDoklad] CAR ELE option not found');
+          console.warn('[iDoklad] No real template option found (only "Bez šablony"?)');
         }
       }
 
