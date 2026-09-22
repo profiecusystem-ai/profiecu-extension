@@ -247,7 +247,7 @@ async function nastavZemi(zeme) {
   await sleep(200);
   setVal(el, hledej);
   await sleep(400);
-  var vybrano = await vyberOptionVOtevrenemMenu(el, matchRe, 12);
+  var vybrano = await vyberOptionVOtevrenemMenu(el, matchRe, 24);
   zapis('země', vybrano ? 'vyplněno' : 'VYBRAT RUČNĚ', vybrano || 'v nabídce nebyla odpovídající položka');
 }
 
@@ -328,11 +328,16 @@ async function otevriCombobox(cil) {
   // NEOTEVŘE (žádná reakce, aria-expanded zůstane false) — otevře ji jen
   // klávesa ArrowDown. Bez tohohle kroku byla „Dobírka" i „Maskované jméno"
   // navždy nedosažitelné, i když je selektor správně našel.
+  //
+  // 22. 9. 2026: obě prodlevy zkráceny (150→100, 400→250) kvůli zrychlení —
+  // bezpečné, protože volající vždy hned poté sám dokola kontroluje
+  // vyberOptionVOtevrenemMenu (viz tam), takže i kdyby nabídka naskočila
+  // později, další krok si na ni stejně počká.
   cil.focus();
   try { cil.click(); } catch (e) { /* nevadí */ }
-  await sleep(150);
+  await sleep(100);
   cil.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 }));
-  await sleep(400);
+  await sleep(250);
 }
 
 async function otevriComboboxPoLabelu(labelRe, timeout) {
@@ -362,9 +367,14 @@ function textStavuComboboxu(cil) {
 // pojmenovává `<id-comboboxu>-option-N`, tedy stejným prefixem jako samotný
 // input (`<id-comboboxu>-input`) — hledání se proto omezí jen na potomky
 // TOHOTO konkrétního comboboxu, ne na celou stránku.
+// 22. 9. 2026: interval zkrácen 300→150 ms a settle po kliku 400→200 ms.
+// Bezpečné, protože je to jen frekvence dotazování na stejné DOM, ne snížení
+// celkového stropu čekání — všechna volání níž mají `pokusu` zdvojnásobené,
+// takže nejhorší případ (položka se objeví pozdě/vůbec) čeká STEJNĚ dlouho
+// jako předtím, jen se při rychlé odpovědi DPD najde a klikne dřív.
 async function vyberOptionVOtevrenemMenu(cil, matchRe, pokusu) {
   var prefix = (cil && cil.id) ? cil.id.replace(/-input$/, '') : null;
-  for (var pokus = 0; pokus < (pokusu || 12); pokus++) {
+  for (var pokus = 0; pokus < (pokusu || 24); pokus++) {
     var polozky = Array.prototype.slice.call(document.querySelectorAll('[role="option"]'));
     if (prefix) polozky = polozky.filter(function (el) { return el.id && el.id.indexOf(prefix) === 0; });
     var hit = polozky.find(function (el) {
@@ -372,10 +382,10 @@ async function vyberOptionVOtevrenemMenu(cil, matchRe, pokusu) {
     });
     if (hit) {
       hit.click();
-      await sleep(400);
+      await sleep(200);
       return textOf(hit);
     }
-    await sleep(300);
+    await sleep(150);
   }
   return null;
 }
@@ -408,7 +418,7 @@ async function zaskrtniDobirku(chceme) {
   }
 
   await otevriCombobox(cil);
-  var hit = await vyberOptionVOtevrenemMenu(cil, COD_RE, 12);
+  var hit = await vyberOptionVOtevrenemMenu(cil, COD_RE, 24);
   if (!hit) {
     zapis('dobírka', chceme ? 'ZAŠKRTNOUT RUČNĚ' : 'ZKONTROLOVAT RUČNĚ', 'v nabídce nebyla položka Dobírka');
     return jeVybrana;
@@ -451,7 +461,7 @@ async function zaskrtniMaskovaciAdresu() {
   } else {
     var ovladac = await otevriComboboxPoLabelu(/masko/i);
     if (ovladac) {
-      var vysledek = await vyberOptionVOtevrenemMenu(ovladac, /masko/i, 6);
+      var vysledek = await vyberOptionVOtevrenemMenu(ovladac, /masko/i, 12);
       zapis('maskovací adresa', vysledek ? 'zaškrtnuto' : 'ZAŠKRTNOUT RUČNĚ', vysledek || 'položka v otevřené nabídce nenalezena');
       checknuto = !!vysledek;
     } else {
@@ -466,7 +476,7 @@ async function zaskrtniMaskovaciAdresu() {
     zapis('maskované jméno', 'ZKONTROLOVAT RUČNĚ', 'nabídka se po zaškrtnutí neobjevila');
     return;
   }
-  var vybranoJmeno = await vyberOptionVOtevrenemMenu(jmenoOvladac, /./, 8);
+  var vybranoJmeno = await vyberOptionVOtevrenemMenu(jmenoOvladac, /./, 16);
   zapis('maskované jméno', vybranoJmeno ? 'vyplněno' : 'VYBRAT RUČNĚ', vybranoJmeno || 'v otevřené nabídce nebyla žádná položka');
 }
 
@@ -537,11 +547,15 @@ async function fillDpd() {
   }, d.name);
 
   // PSČ spouští načtení měst, hlavní služby i doplňkových služeb.
+  // 22. 9. 2026: 1200→700 ms — bezpečné, protože cíl týhle prodlevy (dát
+  // DPD čas donačíst data) navazuje na kroky, které si element/nabídku
+  // stejně samy dohledávají pollingem (waitField/najdiCombobox), takže i
+  // kdyby DPD odpovědělo pomaleji, další krok si počká sám.
   await fillField('PSČ', {
     sel: ['[name="receiver.zipCode"]', '[data-testid="receiver-zip-code"]', '[name="zipCode"]'],
     label: /^(psč|zip|post)/i,
   }, d.zip);
-  await sleep(1200);
+  await sleep(700);
 
   await fillField('město', {
     sel: ['[name="receiver.cityName"]', '[data-testid="receiver-city"]', '[name="cityName"]'],
@@ -574,9 +588,14 @@ async function fillDpd() {
   // DPD Private. Krátká zkouška na klasický <select>/hidden input zůstává pro
   // případ, že DPD formulář zase přestaví, ale hlavní cesta je teď combobox
   // (otevriComboboxPoLabelu + vyběr položky "private" jako u ostatních polí).
+  // 22. 9. 2026: timeout zkrácen 2000→300 ms. Aktuální DPD formulář tenhle
+  // <select> vůbec nemá (jede přes combobox větev níž), takže waitField tu
+  // předtím VŽDY vyčerpal celých 2 s naprázdno, než spadl do else větve —
+  // to byla ta znatelná prodleva před "DPD Private". Fallback zůstává pro
+  // případ budoucí změny formuláře, jen s kratším čekáním na nic.
   var sluzba = await waitField({
     sel: ['[name="services.mainService"]', '[name="product.mainProductSelected"]', '[data-testid="shipment-main-service"]'],
-  }, 2000);
+  }, 300);
   if (sluzba && sluzba.tagName === 'SELECT') {
     var vybrano = selectOption(sluzba, '', /private/i);
     if (!vybrano) {
@@ -587,18 +606,18 @@ async function fillDpd() {
   } else {
     var sluzbaOvladac = await otevriComboboxPoLabelu(/hlavn[ií]\s*slu[žz]b|main\s*service/i, 6000);
     if (sluzbaOvladac) {
-      var vybranaSluzba = await vyberOptionVOtevrenemMenu(sluzbaOvladac, /private/i, 12);
+      var vybranaSluzba = await vyberOptionVOtevrenemMenu(sluzbaOvladac, /private/i, 24);
       zapis('hlavní služba', vybranaSluzba ? 'vybráno' : 'VYBRAT RUČNĚ', vybranaSluzba || 'v nabídce nebyla položka DPD Private');
     } else {
       zapis('hlavní služba', 'NENALEZENO', 'combobox hlavní služby se nenašel');
     }
   }
-  await sleep(400);
+  await sleep(250);
 
   await zaskrtniDobirku(chceDobirku);
 
   if (chceDobirku) {
-    await sleep(400);
+    await sleep(250);
     await fillField('částka dobírky', {
       sel: [
         '[name="services.additionalServices.cod.amount"]',
