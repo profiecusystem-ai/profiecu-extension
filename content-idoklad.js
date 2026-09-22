@@ -2,6 +2,15 @@
 // Listens for IDOKLAD_PROFIECU_DATA from the ISOLATED-world bridge and fills the
 // iDoklad invoice form. Runs in MAIN world so it can bypass React's controlled
 // inputs using the native property descriptor setters.
+//
+// 22. 9. 2026: rozšíření se ukázalo, že v profilu, kde běžela předchozí ladění,
+// vůbec nebylo nainstalované — jakmile bylo doinstalováno, DPD autofill fungoval
+// napoprvé, ale tenhle iDoklad skript ne. Živě ověřeno (data-ui-id i name atributy
+// v aktuálním DOM existují přesně tak, jak je skript hledá), takže nešlo o
+// bit-rot selektorů, ale o závod: první jednorázový querySelector po startu
+// skriptu narazil na formulář, který ještě SPA nestihlo vykreslit. Všechny čtyři
+// úvodní vyhledávání (šablona, tlačítko nového odběratele, popis/název položky,
+// cena) teď čekají přes waitForEl místo jednoho pokusu.
 
 (function () {
   // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -104,8 +113,10 @@
       console.log('[iDoklad] Starting autofill with payload', payload);
 
       // Step 1: Select "CAR ELE" template
-      await delay(500);
-      const tmplDropdown = document.querySelector('[data-ui-id="csw-template"]');
+      // Formulář se vykresluje asynchronně (SPA) — jednorázový querySelector hned
+      // po startu skriptu často narazí na prázdný DOM. waitForEl počká, než se
+      // prvek objeví, místo aby to vzdal na první pokus.
+      const tmplDropdown = await waitForEl('[data-ui-id="csw-template"]', 6000).catch(function () { return null; });
       if (!tmplDropdown) {
         console.warn('[iDoklad] Template dropdown not found, skipping step 1');
       } else {
@@ -144,7 +155,7 @@
       } else {
         console.log('[iDoklad] Step 2B: manual popup branch');
         try {
-          const plus = document.querySelector('[data-ui-id="csw-create-new-partner"]');
+          const plus = await waitForEl('[data-ui-id="csw-create-new-partner"]', 6000).catch(function () { return null; });
           if (!plus) throw new Error('create-new-partner button not found');
           plus.click();
           await waitForEl('input[name="CompanyName"]', 3000);
@@ -169,18 +180,22 @@
       // Step 3: Description + item name
       try {
         const popisText = 'Výrobní číslo produktu: ' + (payload.sn || '');
-        const descEl = document.querySelector('textarea[name="Description"]');
-        const itemNameEl = document.querySelector('input[name="Items[0].Name"]');
+        const descEl = await waitForEl('textarea[name="Description"]', 6000).catch(function () { return null; });
+        const itemNameEl = await waitForEl('input[name="Items[0].Name"]', 6000).catch(function () { return null; });
         if (descEl) setNativeValue(descEl, popisText);
         if (itemNameEl) setNativeValue(itemNameEl, popisText);
-        console.log('[iDoklad] Step 3: description & item name filled');
+        if (descEl || itemNameEl) {
+          console.log('[iDoklad] Step 3: description & item name filled');
+        } else {
+          console.warn('[iDoklad] Step 3: neither description nor item name field found');
+        }
       } catch (err) {
         console.error('[iDoklad] Step 3 failed:', err.message);
       }
 
       // Step 4: Price
       try {
-        const priceEl = document.querySelector('input[name="Items[0].Price"]');
+        const priceEl = await waitForEl('input[name="Items[0].Price"]', 6000).catch(function () { return null; });
         if (priceEl) {
           setNativeValue(priceEl, String(payload.price != null ? payload.price : ''));
           console.log('[iDoklad] Step 4: price filled =', payload.price);
