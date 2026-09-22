@@ -157,7 +157,9 @@
         if (realTemplate) {
           console.log('[iDoklad] Step 1b: clicking template', realTemplate.textContent.trim());
           await trulyClickOption(realTemplate);
-          await delay(800);
+          // 22. 9. 2026: 800→500 ms — jen settle po kliku, krok 2 si svůj
+          // vstupní prvek stejně dohledává vlastním waitForEl pollingem.
+          await delay(500);
         } else {
           console.warn('[iDoklad] No real template option found after 3 attempts (only "Bez šablony"?)');
         }
@@ -169,12 +171,16 @@
         try {
           const odb = await waitForEl('input[placeholder*="Vyhledat v adresáři"]', 5000);
           setNativeValue(odb, String(payload.ico).trim());
-          await delay(1000); // ARES lookup
+          // 22. 9. 2026: dřívější pevná `delay(1000)` na ARES odpověď byla
+          // mrtvý čas navíc PŘED pollingem, který si na `.k-list-item` stejně
+          // čeká sám — sloučeno do jednoho čekání se stejným celkovým stropem
+          // (1000+4000=5000 ms), takže rychlá odpověď ARES se najde hned, ne
+          // až po vynucené sekundě čekání.
           const navrh = await waitForEl(function () {
             return document.querySelector('.k-list-item');
-          }, 4000);
+          }, 5000);
           await trulyClickOption(navrh);
-          await delay(800);
+          await delay(500);
           console.log('[iDoklad] Step 2A done');
         } catch (err) {
           console.error('[iDoklad] Step 2A failed:', err.message);
@@ -190,14 +196,14 @@
           setNativeValue(document.querySelector('input[name="Street"]'), payload.street || '');
           setNativeValue(document.querySelector('input[name="PostalCode"]'), payload.zip || '');
           setNativeValue(document.querySelector('input[name="City"]'), payload.city || '');
-          await delay(300);
+          await delay(200);
           const confirm = document.querySelector('[data-ui-id="csw-dialog-confirm"]');
           if (confirm) {
             confirm.click();
           } else {
             console.warn('[iDoklad] Dialog confirm button not found');
           }
-          await delay(800);
+          await delay(500);
           console.log('[iDoklad] Step 2B done');
         } catch (err) {
           console.error('[iDoklad] Step 2B failed:', err.message);
